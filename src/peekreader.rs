@@ -122,7 +122,7 @@ impl<R: Read> PeekRead for PeekReader<R> {
             self.peek_pos += n;
         }
         self.buf_begin -= n;
-        (&mut self.buf_storage[self.buf_begin..self.buf_begin+n]).copy_from_slice(data)
+        self.buf_storage[self.buf_begin..self.buf_begin+n].copy_from_slice(data)
     }
 }
 
@@ -131,7 +131,7 @@ impl<R: Read> Read for PeekReader<R> {
         // If we don't have any buffered data and we're doing a massive read
         // (larger than our internal buffer), bypass our internal buffer
         // entirely.
-        if self.buffer().len() == 0 && buf.len() >= self.buf_storage.capacity() {
+        if self.buffer().is_empty() && buf.len() >= self.buf_storage.capacity() {
             return self.inner.read(buf);
         }
         let written = self.fill_buf()?.read(buf).unwrap(); // Can't fail.
@@ -142,7 +142,7 @@ impl<R: Read> Read for PeekReader<R> {
 
 impl<R: Read> BufRead for PeekReader<R> {
     fn fill_buf(&mut self) -> Result<&[u8]> {
-        if self.buffer().len() == 0 {
+        if self.buffer().is_empty() {
             self.buf_begin = 0;
             self.buf_storage.clear();
             self.inner

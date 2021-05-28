@@ -1,6 +1,7 @@
 use std::io::{BufRead, Error, ErrorKind, Read, Result, Take};
 
 mod peekreader;
+pub use peekreader::PeekReader;
 
 /// A BufRead object that supports peeking. It has a separate 'peek cursor' which
 /// can go ahead of the regular read cursor, but never behind it. In case the
