@@ -116,6 +116,7 @@ impl<T: PeekReadImpl> PeekReadImpl for Take<T> {
     }
     
     fn peek_consume(&mut self, amt: usize) {
+        self.get_mut().consume(amt);
         let limit = self.limit();
         self.set_limit(limit.saturating_sub(amt as u64));
     }
