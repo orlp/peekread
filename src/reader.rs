@@ -7,7 +7,7 @@ use crate::{PeekRead, PeekReadImpl};
 ///
 /// When using [`PeekRead::peek`] to peek around in the stream the [`PeekReader`] will store any
 /// data read from the inner stream in a buffer so that later calls to [`Read::read`] can
-/// return it. 
+/// return it.
 #[derive(Debug)]
 pub struct PeekReader<R> {
     // Where we store the peeked but not yet read data.
@@ -48,14 +48,14 @@ impl<R: Read> PeekReader<R> {
     pub fn get_ref(&self) -> &R {
         &self.inner
     }
-    
+
     /// Gets a mutable reference to the underlying reader.
     ///
     /// It is inadvisable to directly read from the underlying reader.
     pub fn get_mut(&mut self) -> &mut R {
         &mut self.inner
     }
-    
+
     /// Unwraps this `PeekReader<R>`, returning the underlying reader.
     pub fn into_inner(mut self) -> R {
         self.inner
@@ -80,7 +80,10 @@ impl<R: Read> PeekReader<R> {
     fn ensure_buffer(&mut self, nbytes: usize) -> Result<()> {
         self.request_buffer(nbytes)?;
         if self.buffer().len() < nbytes {
-            Err(Error::new(ErrorKind::UnexpectedEof, "failed to fill peek buffer"))
+            Err(Error::new(
+                ErrorKind::UnexpectedEof,
+                "failed to fill peek buffer",
+            ))
         } else {
             Ok(())
         }
@@ -93,7 +96,8 @@ impl<R: Read> PeekReader<R> {
         if cap >= 3 * Self::MIN_READ && self.buf_begin >= self.buf_storage.capacity() / 2 {
             // Shrink desired front space a bit since we're relatively lacking space at the end.
             self.desired_front_space = self.desired_front_space.min(self.buf_begin) * 2 / 3;
-            self.buf_storage.drain(self.desired_front_space..self.buf_begin);
+            self.buf_storage
+                .drain(self.desired_front_space..self.buf_begin);
             self.buf_begin = 0;
         }
     }
@@ -104,7 +108,8 @@ impl<R: Read> PeekReader<R> {
             // this from occurring all the time when doing big unreads, increase our desired front space.
             self.desired_front_space = 2 * self.desired_front_space.max(nbytes) + 32;
             let extra_front_space = self.desired_front_space - self.buf_begin;
-            self.buf_storage.splice(0..0, std::iter::repeat(0).take(extra_front_space));
+            self.buf_storage
+                .splice(0..0, std::iter::repeat(0).take(extra_front_space));
             self.buf_begin += extra_front_space;
         }
     }
@@ -142,7 +147,9 @@ impl<R: Read> PeekReadImpl for PeekReader<R> {
     fn peek_seek(&mut self, pos: SeekFrom) -> Result<u64> {
         match pos {
             SeekFrom::Start(offset) => self.peek_pos = offset as usize,
-            SeekFrom::Current(offset) => self.peek_pos = (self.peek_pos as i64 + offset).max(0) as usize,
+            SeekFrom::Current(offset) => {
+                self.peek_pos = (self.peek_pos as i64 + offset).max(0) as usize
+            }
             SeekFrom::End(offset) => {
                 self.request_buffer(usize::MAX)?;
                 self.peek_pos = (self.buffer().len() as i64 + offset).max(0) as usize;
@@ -156,7 +163,7 @@ impl<R: Read> PeekReadImpl for PeekReader<R> {
         self.ensure_space_at_front(n);
         self.peek_pos += n;
         self.buf_begin -= n;
-        self.buf_storage[self.buf_begin..self.buf_begin+n].copy_from_slice(data)
+        self.buf_storage[self.buf_begin..self.buf_begin + n].copy_from_slice(data)
     }
 }
 
@@ -193,7 +200,3 @@ impl<R: Read> BufRead for PeekReader<R> {
         self.peek_pos = self.peek_pos.saturating_sub(amt);
     }
 }
-
-
-
-

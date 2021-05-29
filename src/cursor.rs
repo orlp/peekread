@@ -35,13 +35,11 @@ impl<'a> BufRead for PeekCursor<'a> {
     }
 }
 
-
 impl<'a> Seek for PeekCursor<'a> {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
         self.inner.peek_seek(pos)
     }
 }
-
 
 /// A `PeekCursor` that does not override the default implementations.
 /// Used to provide our default implementations without being circular.
@@ -51,7 +49,7 @@ pub(crate) struct DefaultImplPeekCursor<'a, T: ?Sized + PeekReadImpl> {
 }
 
 impl<'a, T: ?Sized + PeekReadImpl> DefaultImplPeekCursor<'a, T> {
-    pub fn new(inner: &'a mut T) -> Self  {
+    pub fn new(inner: &'a mut T) -> Self {
         Self { inner }
     }
 }

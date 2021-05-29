@@ -4,9 +4,9 @@ use std::io::*;
 
 mod cursor;
 mod reader;
-pub use reader::PeekReader;
-pub use cursor::PeekCursor;
 use cursor::DefaultImplPeekCursor;
+pub use cursor::PeekCursor;
+pub use reader::PeekReader;
 
 /// A trait for a [`Read`] stream that supports buffered reading and peeking.
 ///
@@ -16,9 +16,7 @@ use cursor::DefaultImplPeekCursor;
 /// backwards (e.g. due to a [`Seek`] or [`unread`]), the peek cursor does not automatically move
 /// with it.
 ///
-/// Reading from the peek cursor does not affect the read cursor in any way. Internally any data
-/// read (or skipped past) through the peek cursor will be buffered so that later the same data
-/// can be read through the read cursor.
+/// Reading from the peek cursor does not affect the read cursor in any way.
 ///
 /// [`unread`]: PeekRead::unread
 pub trait PeekRead: BufRead {
@@ -35,7 +33,8 @@ pub trait PeekRead: BufRead {
     /// The peek cursor is unchanged, it stays at its old position in the stream.  However since
     /// `.peek().stream_position()` is computed relative to the read cursor position, it will
     /// appear to have moved forwards by `data.len()` bytes.
-    fn unread(&mut self, data: &[u8]); }
+    fn unread(&mut self, data: &[u8]);
+}
 
 impl<T: PeekReadImpl> PeekRead for T {
     fn peek(&mut self) -> PeekCursor<'_> {
@@ -47,7 +46,6 @@ impl<T: PeekReadImpl> PeekRead for T {
     }
 }
 
-
 /// A helper trait used to implement [`PeekRead`].
 ///
 /// You can't implement [`PeekRead`] directly, instead you must implement this trait which will
@@ -55,10 +53,10 @@ impl<T: PeekReadImpl> PeekRead for T {
 pub trait PeekReadImpl: BufRead {
     /// Used to implement `self.peek().read(buf)`. See [`Read::read`].
     fn peek_read(&mut self, buf: &mut [u8]) -> Result<usize>;
-    
+
     /// Used to implement `self.peek().fill_buf()`. See [`BufRead::fill_buf`].
     fn peek_fill_buf(&mut self) -> Result<&[u8]>;
-    
+
     /// Used to implement `self.peek().consume()`. See [`BufRead::consume`].
     fn peek_consume(&mut self, amt: usize);
 
@@ -90,7 +88,6 @@ pub trait PeekReadImpl: BufRead {
     }
 }
 
-
 // Generic implementations.
 impl<T: PeekReadImpl> PeekReadImpl for Take<T> {
     fn peek_read(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -110,7 +107,7 @@ impl<T: PeekReadImpl> PeekReadImpl for Take<T> {
         let n = buf.len().min(limit);
         Ok(&buf[..n])
     }
-    
+
     fn peek_consume(&mut self, amt: usize) {
         self.get_mut().consume(amt);
         let limit = self.limit();
@@ -121,7 +118,8 @@ impl<T: PeekReadImpl> PeekReadImpl for Take<T> {
         if let SeekFrom::End(offset) = pos {
             let limit = self.limit();
             let eof_offset = self.get_mut().peek_seek(SeekFrom::Start(limit))? as i64;
-            self.get_mut().peek_seek(SeekFrom::Start((eof_offset + offset).max(0) as u64))
+            self.get_mut()
+                .peek_seek(SeekFrom::Start((eof_offset + offset).max(0) as u64))
         } else {
             self.get_mut().peek_seek(pos)
         }
@@ -131,7 +129,7 @@ impl<T: PeekReadImpl> PeekReadImpl for Take<T> {
         self.get_mut().unread(data);
         self.set_limit(self.limit() + data.len() as u64);
     }
- }
+}
 
 impl<T: PeekReadImpl + ?Sized> PeekReadImpl for &mut T {
     #[inline]
@@ -190,6 +188,5 @@ impl<T: PeekReadImpl + ?Sized> PeekReadImpl for Box<T> {
 // TODO: Not sure if this is possible, there are then two peek cursors.
 // impl<T: PeekRead, U: PeekRead> PeekRead for Chain<T, U> { }
 
-
 // Impossible that BufRead does support:
-// &[u8], Empty, StdinLock<'_>, Cursor<T> 
+// &[u8], Empty, StdinLock<'_>, Cursor<T>
