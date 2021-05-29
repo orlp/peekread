@@ -1,9 +1,12 @@
-use std::io::{BufRead, Error, ErrorKind, Read, Result};
+use std::io::*;
 
-use crate::{PeekRead, PeekSeekFrom, UnreadPeekCursor};
+use crate::{PeekReadImpl, UnreadPeekCursor};
 
-/// A type implementing the functionality of PeekRead akin
-/// to how BufReader implements BufRead.
+/// A type implementing the functionality of [`PeekRead`] akin
+/// to how [`BufReader`] implements [`BufRead`].
+///
+/// [`PeekRead`]: crate::PeekRead
+#[derive(Debug)]
 pub struct PeekReader<R> {
     // Where we store the peeked but not yet read data.
     // This data lives in the buffer buf_storage[buf_begin..].
@@ -19,6 +22,7 @@ pub struct PeekReader<R> {
 impl<R: Read> PeekReader<R> {
     const MIN_READ: usize = 8 * 1024;
 
+    /// Creates a new [`PeekReader`].
     pub fn new(reader: R) -> Self {
         Self {
             buf_storage: Vec::new(),
@@ -29,7 +33,10 @@ impl<R: Read> PeekReader<R> {
         }
     }
 
-    fn buffer(&self) -> &[u8] {
+    /// Returns a reference to the internally buffered data.
+    ///
+    /// Unlike [`BufRead::fill_buf`], this will not attempt to fill the buffer if it is empty.
+    pub fn buffer(&self) -> &[u8] {
         &self.buf_storage[self.buf_begin..]
     }
 
@@ -82,8 +89,8 @@ impl<R: Read> PeekReader<R> {
     }
 }
 
-impl<R: Read> PeekRead for PeekReader<R> {
-    fn peek(&mut self, buf: &mut [u8]) -> Result<usize> {
+impl<R: Read> PeekReadImpl for PeekReader<R> {
+    fn peek_read(&mut self, buf: &mut [u8]) -> Result<usize> {
         self.request_buffer(self.peek_pos + buf.len().min(Self::MIN_READ))?;
         let mut peek_buffer = self.buffer().get(self.peek_pos..).unwrap_or_default();
         let written = peek_buffer.read(buf).unwrap(); // Can't fail.
@@ -91,27 +98,36 @@ impl<R: Read> PeekRead for PeekReader<R> {
         Ok(written)
     }
 
-    fn peek_exact(&mut self, buf: &mut [u8]) -> Result<()> {
+    fn peek_fill_buf(&mut self) -> Result<&[u8]> {
+        self.request_buffer(self.peek_pos + Self::MIN_READ)?;
+        Ok(self.buffer().get(self.peek_pos..).unwrap_or_default())
+    }
+
+    fn peek_consume(&mut self, amt: usize) {
+        self.peek_pos += amt;
+    }
+
+    fn peek_read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         self.ensure_buffer(self.peek_pos + buf.len())?;
         let mut peek_buffer = &self.buffer()[self.peek_pos..];
         self.peek_pos += peek_buffer.read(buf).unwrap(); // Can't fail.
         Ok(())
     }
 
-    fn peek_position(&self) -> usize {
-        self.peek_pos
+    fn peek_stream_position(&mut self) -> Result<u64> {
+        Ok(self.peek_pos as u64)
     }
 
-    fn peek_seek(&mut self, pos: PeekSeekFrom) -> Result<usize> {
+    fn peek_seek(&mut self, pos: SeekFrom) -> Result<u64> {
         match pos {
-            PeekSeekFrom::ReadCursor(offset) => self.peek_pos = offset as usize,
-            PeekSeekFrom::Current(offset) => self.peek_pos = (self.peek_pos as isize + offset).max(0) as usize,
-            PeekSeekFrom::End(offset) => {
+            SeekFrom::Start(offset) => self.peek_pos = offset as usize,
+            SeekFrom::Current(offset) => self.peek_pos = (self.peek_pos as i64 + offset).max(0) as usize,
+            SeekFrom::End(offset) => {
                 self.request_buffer(usize::MAX)?;
-                self.peek_pos = (self.buffer().len() as isize + offset).max(0) as usize;
+                self.peek_pos = (self.buffer().len() as i64 + offset).max(0) as usize;
             }
         }
-        Ok(self.peek_pos)
+        Ok(self.peek_pos as u64)
     }
 
     fn unread(&mut self, data: &[u8], peek_cursor_behavior: UnreadPeekCursor) {
