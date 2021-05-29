@@ -7,8 +7,8 @@ use crate::PeekReadImpl;
 ///
 /// This object is created by [`PeekRead::peek`].
 ///
-/// [`PeekRead`]: [`crate::PeekRead`]
-/// [`PeekRead::peek`]: [`crate::PeekRead::peek`]
+/// [`PeekRead`]: crate::PeekRead
+/// [`PeekRead::peek`]: crate::PeekRead::peek
 pub struct PeekCursor<'a> {
     inner: &'a mut dyn PeekReadImpl,
 }
