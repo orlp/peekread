@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use std::io::*;
 
 mod cursor;
@@ -8,9 +10,17 @@ use cursor::DefaultImplPeekCursor;
 
 /// A trait for a [`Read`] stream that supports buffered reading and peeking.
 ///
-/// It has a separate 'peek cursor' which can go ahead of the regular read cursor, but never behind
-/// it. In case the read cursor passes the peek cursor the peek cursor is automatically advanced to
-/// match it.
+/// In addition to a normal read cursor it has a separate 'peek cursor' which can go ahead of the
+/// regular read cursor, but never behind it. In case the read cursor passes the peek cursor the
+/// peek cursor is automatically advanced to match it. However in the case the read cursor moves
+/// backwards (e.g. due to a [`Seek`] or [`unread`]), the peek cursor does not automatically move
+/// with it.
+///
+/// Reading from the peek cursor does not affect the read cursor in any way. Internally any data
+/// read (or skipped past) through the peek cursor will be buffered so that later the same data
+/// can be read through the read cursor.
+///
+/// [`unread`]: PeekRead::unread
 pub trait PeekRead: BufRead {
     /// Returns a [`PeekCursor`] which implements [`BufRead`] + [`Seek`]. Reading from this or
     /// seeking on it won't affect the read cursor, only the peek cursor. You can't seek before the
@@ -20,37 +30,23 @@ pub trait PeekRead: BufRead {
     /// calls to this function manipulate the same (persistent) underlying cursor state.
     fn peek(&mut self) -> PeekCursor<'_>;
 
-    /// Pushes the given data into the stream at the front, pushing the read
-    /// cursor back. The peek cursor can do three things depending on `peek_cursor_behavior`:
+    /// Pushes the given data into the stream at the front, pushing the read cursor back.
     ///
-    ///   1. [`UnreadPeekCursor::Fixed`] leaves the position of the peek cursor unchanged, which
-    ///      means that `.peek().stream_position()` becomes `data.len()` higher (since the read
-    ///      cursor was moved back and the stream position is calculated relative to it).
-    ///   2. [`UnreadPeekCursor::Shift`] moves the peek cursor back by `data.len()` bytes, which
-    ///      leaves `.peek().stream_position()` unchanged.
-    ///   3. [`UnreadPeekCursor::ShiftIfZero`] is equivalent to [`UnreadPeekCursor::Shift`] if
-    ///      `.peek().stream_position()` is zero and [`UnreadPeekCursor::Fixed`] otherwise.
-    fn unread(&mut self, data: &[u8], peek_cursor_behavior: UnreadPeekCursor);
-}
+    /// The peek cursor is unchanged, it stays at its old position in the stream.  However since
+    /// `.peek().stream_position()` is computed relative to the read cursor position, it will
+    /// appear to have moved forwards by `data.len()` bytes.
+    fn unread(&mut self, data: &[u8]); }
 
 impl<T: PeekReadImpl> PeekRead for T {
     fn peek(&mut self) -> PeekCursor<'_> {
         PeekCursor::new(self)
     }
 
-    fn unread(&mut self, data: &[u8], peek_cursor_behavior: UnreadPeekCursor) {
-        self.unread(data, peek_cursor_behavior)
+    fn unread(&mut self, data: &[u8]) {
+        self.unread(data)
     }
 }
 
-
-/// Enum argument for [`PeekRead::unread`].
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum UnreadPeekCursor {
-    Fixed,
-    Shift,
-    ShiftIfZero,
-}
 
 /// A helper trait used to implement [`PeekRead`].
 ///
@@ -70,7 +66,7 @@ pub trait PeekReadImpl: BufRead {
     fn peek_seek(&mut self, pos: SeekFrom) -> Result<u64>;
 
     /// Used to implement `self.unread(data, peek_cursor_behavior)`. See [`PeekRead::unread`].
-    fn unread(&mut self, data: &[u8], peek_cursor_behavior: UnreadPeekCursor);
+    fn unread(&mut self, data: &[u8]);
 
     // Start default methods.
     /// Used to implement `self.peek().stream_position()`. See [`Seek::stream_position`].
@@ -131,8 +127,8 @@ impl<T: PeekReadImpl> PeekReadImpl for Take<T> {
         }
     }
 
-    fn unread(&mut self, data: &[u8], peek_cursor_behavior: UnreadPeekCursor) {
-        self.get_mut().unread(data, peek_cursor_behavior);
+    fn unread(&mut self, data: &[u8]) {
+        self.get_mut().unread(data);
         self.set_limit(self.limit() + data.len() as u64);
     }
  }
@@ -159,8 +155,8 @@ impl<T: PeekReadImpl + ?Sized> PeekReadImpl for &mut T {
     }
 
     #[inline]
-    fn unread(&mut self, data: &[u8], peek_cursor_behavior: UnreadPeekCursor) {
-        (**self).unread(data, peek_cursor_behavior)
+    fn unread(&mut self, data: &[u8]) {
+        (**self).unread(data)
     }
 }
 
@@ -186,8 +182,8 @@ impl<T: PeekReadImpl + ?Sized> PeekReadImpl for Box<T> {
     }
 
     #[inline]
-    fn unread(&mut self, data: &[u8], peek_cursor_behavior: UnreadPeekCursor) {
-        (**self).unread(data, peek_cursor_behavior)
+    fn unread(&mut self, data: &[u8]) {
+        (**self).unread(data)
     }
 }
 

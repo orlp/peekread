@@ -3,9 +3,9 @@ use std::io::*;
 use crate::PeekReadImpl;
 
 /// An object implementing [`BufRead`] and [`Seek`] to peek ahead in a stream without
-/// affecting the original stream. See [`PeekRead`].
+/// affecting the original stream.
 ///
-/// This object is created by [`PeekRead::peek`].
+/// This object is only created by [`PeekRead::peek`].
 ///
 /// [`PeekRead`]: crate::PeekRead
 /// [`PeekRead::peek`]: crate::PeekRead::peek

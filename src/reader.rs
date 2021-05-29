@@ -1,11 +1,13 @@
 use std::io::*;
 
-use crate::{PeekReadImpl, UnreadPeekCursor};
+use crate::{PeekRead, PeekReadImpl};
 
 /// A type implementing the functionality of [`PeekRead`] akin
 /// to how [`BufReader`] implements [`BufRead`].
 ///
-/// [`PeekRead`]: crate::PeekRead
+/// When using [`PeekRead::peek`] to peek around in the stream the [`PeekReader`] will store any
+/// data read from the inner stream in a buffer so that later calls to [`Read::read`] can
+/// return it. 
 #[derive(Debug)]
 pub struct PeekReader<R> {
     // Where we store the peeked but not yet read data.
@@ -38,6 +40,25 @@ impl<R: Read> PeekReader<R> {
     /// Unlike [`BufRead::fill_buf`], this will not attempt to fill the buffer if it is empty.
     pub fn buffer(&self) -> &[u8] {
         &self.buf_storage[self.buf_begin..]
+    }
+
+    /// Gets a reference to the underlying reader.
+    ///
+    /// It is inadvisable to directly read from the underlying reader.
+    pub fn get_ref(&self) -> &R {
+        &self.inner
+    }
+    
+    /// Gets a mutable reference to the underlying reader.
+    ///
+    /// It is inadvisable to directly read from the underlying reader.
+    pub fn get_mut(&mut self) -> &mut R {
+        &mut self.inner
+    }
+    
+    /// Unwraps this `PeekReader<R>`, returning the underlying reader.
+    pub fn into_inner(mut self) -> R {
+        self.inner
     }
 
     // Try to fill the buffer so that it's at least nbytes in length
@@ -130,13 +151,10 @@ impl<R: Read> PeekReadImpl for PeekReader<R> {
         Ok(self.peek_pos as u64)
     }
 
-    fn unread(&mut self, data: &[u8], peek_cursor_behavior: UnreadPeekCursor) {
+    fn unread(&mut self, data: &[u8]) {
         let n = data.len();
         self.ensure_space_at_front(n);
-        if peek_cursor_behavior == UnreadPeekCursor::Fixed ||
-            peek_cursor_behavior == UnreadPeekCursor::ShiftIfZero && self.peek_pos > 0 {
-            self.peek_pos += n;
-        }
+        self.peek_pos += n;
         self.buf_begin -= n;
         self.buf_storage[self.buf_begin..self.buf_begin+n].copy_from_slice(data)
     }
@@ -175,4 +193,7 @@ impl<R: Read> BufRead for PeekReader<R> {
         self.peek_pos = self.peek_pos.saturating_sub(amt);
     }
 }
+
+
+
 
