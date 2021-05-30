@@ -3,10 +3,11 @@
 use std::io::*;
 
 mod cursor;
-mod reader;
+mod bufreader;
+mod seekreader;
 use cursor::DefaultImplPeekCursor;
 pub use cursor::PeekCursor;
-pub use reader::PeekReader;
+pub use bufreader::PeekBufReader;
 
 /// A trait for a [`Read`] stream that supports buffered reading and peeking.
 ///
@@ -18,7 +19,7 @@ pub use reader::PeekReader;
 ///
 /// Reading from the peek cursor does not affect the read cursor in any way.
 ///
-/// [`unread`]: PeekRead::unread
+/// [`unread`]: PeekBufReader::unread
 pub trait PeekRead: BufRead {
     /// Returns a [`PeekCursor`] which implements [`BufRead`] + [`Seek`]. Reading from this or
     /// seeking on it won't affect the read cursor, only the peek cursor. You can't seek before the
@@ -27,29 +28,12 @@ pub trait PeekRead: BufRead {
     /// There is only one peek cursor, so operations on the [`PeekCursor`]s returned by separate
     /// calls to this function manipulate the same (persistent) underlying cursor state.
     fn peek(&mut self) -> PeekCursor<'_>;
-
-    /// Pushes the given data into the stream at the front, pushing the read cursor back.
-    ///
-    /// The peek cursor is unchanged, it stays at its old position in the stream.  However since
-    /// `.peek().stream_position()` is computed relative to the read cursor position, it will
-    /// appear to have moved forwards by `data.len()` bytes.
-    fn unread(&mut self, data: &[u8]);
-}
-
-impl<T: PeekReadImpl> PeekRead for T {
-    fn peek(&mut self) -> PeekCursor<'_> {
-        PeekCursor::new(self)
-    }
-
-    fn unread(&mut self, data: &[u8]) {
-        self.unread(data)
-    }
 }
 
 /// A helper trait used to implement [`PeekRead`].
 ///
-/// You can't implement [`PeekRead`] directly, instead you must implement this trait which will
-/// then automatically implement [`PeekRead`] for you.
+/// In order to implement [`PeekRead`] for one of your types you must first implement this trait
+/// on your type and then implement [`PeekRead::peek`] returning `PeekCursor::new(self)`.
 pub trait PeekReadImpl: BufRead {
     /// Used to implement `self.peek().read(buf)`. See [`Read::read`].
     fn peek_read(&mut self, buf: &mut [u8]) -> Result<usize>;
@@ -62,9 +46,6 @@ pub trait PeekReadImpl: BufRead {
 
     /// Used to implement `self.peek().seek(pos)`. See [`Seek::seek`].
     fn peek_seek(&mut self, pos: SeekFrom) -> Result<u64>;
-
-    /// Used to implement `self.unread(data, peek_cursor_behavior)`. See [`PeekRead::unread`].
-    fn unread(&mut self, data: &[u8]);
 
     // Start default methods.
     /// Used to implement `self.peek().stream_position()`. See [`Seek::stream_position`].
@@ -124,69 +105,26 @@ impl<T: PeekReadImpl> PeekReadImpl for Take<T> {
             self.get_mut().peek_seek(pos)
         }
     }
+}
 
-    fn unread(&mut self, data: &[u8]) {
-        self.get_mut().unread(data);
-        self.set_limit(self.limit() + data.len() as u64);
+impl<T: PeekRead + ?Sized> PeekRead for &mut T {
+    #[inline]
+    fn peek(&mut self) -> PeekCursor<'_> {
+        (**self).peek()
     }
 }
 
-impl<T: PeekReadImpl + ?Sized> PeekReadImpl for &mut T {
+impl<T: PeekRead + ?Sized> PeekRead for Box<T> {
     #[inline]
-    fn peek_read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        (**self).peek_read(buf)
-    }
-
-    #[inline]
-    fn peek_fill_buf(&mut self) -> Result<&[u8]> {
-        (**self).peek_fill_buf()
-    }
-
-    #[inline]
-    fn peek_consume(&mut self, amt: usize) {
-        (**self).peek_consume(amt)
-    }
-
-    #[inline]
-    fn peek_seek(&mut self, pos: SeekFrom) -> Result<u64> {
-        (**self).peek_seek(pos)
-    }
-
-    #[inline]
-    fn unread(&mut self, data: &[u8]) {
-        (**self).unread(data)
+    fn peek(&mut self) -> PeekCursor<'_> {
+        (**self).peek()
     }
 }
 
-impl<T: PeekReadImpl + ?Sized> PeekReadImpl for Box<T> {
-    #[inline]
-    fn peek_read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        (**self).peek_read(buf)
-    }
-
-    #[inline]
-    fn peek_fill_buf(&mut self) -> Result<&[u8]> {
-        (**self).peek_fill_buf()
-    }
-
-    #[inline]
-    fn peek_consume(&mut self, amt: usize) {
-        (**self).peek_consume(amt)
-    }
-
-    #[inline]
-    fn peek_seek(&mut self, pos: SeekFrom) -> Result<u64> {
-        (**self).peek_seek(pos)
-    }
-
-    #[inline]
-    fn unread(&mut self, data: &[u8]) {
-        (**self).unread(data)
-    }
-}
+// TODO: Empty
 
 // TODO: Not sure if this is possible, there are then two peek cursors.
 // impl<T: PeekRead, U: PeekRead> PeekRead for Chain<T, U> { }
 
-// Impossible that BufRead does support:
-// &[u8], Empty, StdinLock<'_>, Cursor<T>
+// Impossible (no space to store peek cursor position).
+// &[u8], StdinLock<'_>, Cursor<T>

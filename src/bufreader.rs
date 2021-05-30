@@ -1,15 +1,15 @@
 use std::io::*;
 
-use crate::{PeekRead, PeekReadImpl};
+use crate::{PeekRead, PeekReadImpl, PeekCursor};
 
 /// A type implementing the functionality of [`PeekRead`] akin
 /// to how [`BufReader`] implements [`BufRead`].
 ///
-/// When using [`PeekRead::peek`] to peek around in the stream the [`PeekReader`] will store any
+/// When using [`PeekRead::peek`] to peek around in the stream the [`PeekBufReader`] will store any
 /// data read from the inner stream in a buffer so that later calls to [`Read::read`] can
 /// return it.
 #[derive(Debug)]
-pub struct PeekReader<R> {
+pub struct PeekBufReader<R> {
     // Where we store the peeked but not yet read data.
     // This data lives in the buffer buf_storage[buf_begin..].
     // We can thus have free space at the front.
@@ -21,10 +21,10 @@ pub struct PeekReader<R> {
     inner: R,
 }
 
-impl<R: Read> PeekReader<R> {
+impl<R: Read> PeekBufReader<R> {
     const MIN_READ: usize = 8 * 1024;
 
-    /// Creates a new [`PeekReader`].
+    /// Creates a new [`PeekBufReader`].
     pub fn new(reader: R) -> Self {
         Self {
             buf_storage: Vec::new(),
@@ -33,6 +33,19 @@ impl<R: Read> PeekReader<R> {
             peek_pos: 0,
             inner: reader,
         }
+    }
+
+    /// Pushes the given data into the stream at the front, pushing the read cursor back.
+    ///
+    /// The peek cursor is unchanged, it stays at its old position in the stream.  However since
+    /// `.peek().stream_position()` is computed relative to the read cursor position, it will
+    /// appear to have moved forwards by `data.len()` bytes.
+    pub fn unread(&mut self, data: &[u8]) {
+        let n = data.len();
+        self.ensure_space_at_front(n);
+        self.peek_pos += n;
+        self.buf_begin -= n;
+        self.buf_storage[self.buf_begin..self.buf_begin + n].copy_from_slice(data)
     }
 
     /// Returns a reference to the internally buffered data.
@@ -56,8 +69,8 @@ impl<R: Read> PeekReader<R> {
         &mut self.inner
     }
 
-    /// Unwraps this `PeekReader<R>`, returning the underlying reader.
-    pub fn into_inner(mut self) -> R {
+    /// Unwraps this `PeekBufReader<R>`, returning the underlying reader.
+    pub fn into_inner(self) -> R {
         self.inner
     }
 
@@ -115,7 +128,13 @@ impl<R: Read> PeekReader<R> {
     }
 }
 
-impl<R: Read> PeekReadImpl for PeekReader<R> {
+impl<R: Read> PeekRead for PeekBufReader<R> {
+    fn peek(&mut self) -> PeekCursor<'_> {
+        PeekCursor::new(self)
+    }
+}
+
+impl<R: Read> PeekReadImpl for PeekBufReader<R> {
     fn peek_read(&mut self, buf: &mut [u8]) -> Result<usize> {
         self.request_buffer(self.peek_pos + buf.len().min(Self::MIN_READ))?;
         let mut peek_buffer = self.buffer().get(self.peek_pos..).unwrap_or_default();
@@ -157,17 +176,9 @@ impl<R: Read> PeekReadImpl for PeekReader<R> {
         }
         Ok(self.peek_pos as u64)
     }
-
-    fn unread(&mut self, data: &[u8]) {
-        let n = data.len();
-        self.ensure_space_at_front(n);
-        self.peek_pos += n;
-        self.buf_begin -= n;
-        self.buf_storage[self.buf_begin..self.buf_begin + n].copy_from_slice(data)
-    }
 }
 
-impl<R: Read> Read for PeekReader<R> {
+impl<R: Read> Read for PeekBufReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         // If we don't have any buffered data and we're doing a massive read
         // (larger than our internal buffer), bypass our internal buffer
@@ -181,7 +192,7 @@ impl<R: Read> Read for PeekReader<R> {
     }
 }
 
-impl<R: Read> BufRead for PeekReader<R> {
+impl<R: Read> BufRead for PeekBufReader<R> {
     fn fill_buf(&mut self) -> Result<&[u8]> {
         if self.buffer().is_empty() {
             self.buf_begin = 0;

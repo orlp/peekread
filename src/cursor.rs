@@ -5,16 +5,16 @@ use crate::PeekReadImpl;
 /// An object implementing [`BufRead`] and [`Seek`] to peek ahead in a stream without
 /// affecting the original stream.
 ///
-/// This object is only created by [`PeekRead::peek`].
-///
 /// [`PeekRead`]: crate::PeekRead
 /// [`PeekRead::peek`]: crate::PeekRead::peek
 pub struct PeekCursor<'a> {
     inner: &'a mut dyn PeekReadImpl,
+    pos: u64,
 }
 
 impl<'a> PeekCursor<'a> {
-    pub(crate) fn new(inner: &'a mut dyn PeekReadImpl) -> Self {
+    /// Creates a new [`PeekCursor`].
+    pub fn new(inner: &'a mut dyn PeekReadImpl) -> Self {
         Self { inner }
     }
 }
