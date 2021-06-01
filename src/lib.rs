@@ -6,16 +6,16 @@ pub mod detail;
 
 mod foreign_impl;
 mod seekreader;
-// mod bufreader;
+mod bufreader;
 
 use std::io::*;
-// pub use bufreader::PeekBufReader;
+pub use bufreader::BufPeekReader;
 pub use detail::cursor::PeekCursor;
 
 
-/// A trait for a [`Read`] stream that supports buffered reading and peeking.
+/// A trait for a [`Read`] stream that supports peeking ahead in the stream.
 ///
-/// In addition to a normal read cursor it has a separate 'peek cursor' which can go ahead of the
+/// In addition to a normal read cursor it can create a separate 'peek cursor' which can go ahead of the
 /// regular read cursor, but never behind it. Reading from the peek cursor does not affect the read
 /// cursor in any way.
 ///
@@ -33,9 +33,6 @@ pub trait PeekRead: Read {
     fn peek(&mut self) -> PeekCursor<'_>;
 }
 
-
-/// A wrapper for a [`Read`] stream that implements [`PeekRead`] using a buffer to store peeked data.
-pub struct BufPeekReader;
 
 /// A wrapper for a [`Read`] + [`Seek`] stream that implements [`PeekRead`] using seeking.
 pub struct SeekPeekReader;

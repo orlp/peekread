@@ -1,51 +1,54 @@
 use std::io::*;
 
-use crate::{PeekRead, PeekReadImpl, PeekCursor};
+use crate::{PeekRead, PeekCursor, detail::{PeekReadImpl, PeekCursorState}};
 
-/// A type implementing the functionality of [`PeekRead`] akin
-/// to how [`BufReader`] implements [`BufRead`].
-///
-/// When using [`PeekRead::peek`] to peek around in the stream the [`PeekBufReader`] will store any
-/// data read from the inner stream in a buffer so that later calls to [`Read::read`] can
-/// return it.
+/// A wrapper for a [`Read`] stream that implements [`PeekRead`] using a buffer to store peeked data.
 #[derive(Debug)]
-pub struct PeekBufReader<R> {
+pub struct BufPeekReader<R> {
     // Where we store the peeked but not yet read data.
     // This data lives in the buffer buf_storage[buf_begin..].
     // We can thus have free space at the front.
     buf_storage: Vec<u8>,
     buf_begin: usize,
-    desired_front_space: usize,
 
-    peek_pos: usize, // This is relative to the read pointer.
+    desired_front_space: usize,
+    min_read_size: usize,
+
     inner: R,
 }
 
-impl<R: Read> PeekBufReader<R> {
-    const MIN_READ: usize = 8 * 1024;
+impl<R: Read> BufPeekReader<R> {
+    const MIN_RECLAIM_SIZE: usize = 1024 * 20;
 
-    /// Creates a new [`PeekBufReader`].
+    /// Creates a new [`BufPeekReader`].
     pub fn new(reader: R) -> Self {
         Self {
             buf_storage: Vec::new(),
             buf_begin: 0,
             desired_front_space: 32,
-            peek_pos: 0,
+            min_read_size: 0,
             inner: reader,
         }
     }
 
     /// Pushes the given data into the stream at the front, pushing the read cursor back.
-    ///
-    /// The peek cursor is unchanged, it stays at its old position in the stream.  However since
-    /// `.peek().stream_position()` is computed relative to the read cursor position, it will
-    /// appear to have moved forwards by `data.len()` bytes.
     pub fn unread(&mut self, data: &[u8]) {
         let n = data.len();
         self.ensure_space_at_front(n);
-        self.peek_pos += n;
         self.buf_begin -= n;
         self.buf_storage[self.buf_begin..self.buf_begin + n].copy_from_slice(data)
+    }
+
+    /// Sets the minimum size used when reading from the underlying stream. Setting this allows
+    /// for efficient buffered reads on any stream similar to [`BufReader`], but is disabled
+    /// by default since doing bigger reads than requested might unnecessarily block.
+    pub fn set_min_read_size(&mut self, nbytes: usize) {
+        self.min_read_size = nbytes;
+    }
+
+    /// Gets the minimum read size. See [`Self::set_min_read_size`].
+    pub fn min_read_size(&self) -> usize {
+        self.min_read_size
     }
 
     /// Returns a reference to the internally buffered data.
@@ -69,7 +72,7 @@ impl<R: Read> PeekBufReader<R> {
         &mut self.inner
     }
 
-    /// Unwraps this `PeekBufReader<R>`, returning the underlying reader.
+    /// Unwraps this `BufPeekReader<R>`, returning the underlying reader.
     pub fn into_inner(self) -> R {
         self.inner
     }
@@ -80,7 +83,7 @@ impl<R: Read> PeekBufReader<R> {
         let nbytes_needed = nbytes.saturating_sub(self.buffer().len());
         if nbytes_needed > 0 {
             self.request_space_at_end();
-            let read_size = nbytes_needed.max(Self::MIN_READ);
+            let read_size = nbytes_needed.max(self.min_read_size);
             self.inner
                 .by_ref()
                 .take(read_size as u64)
@@ -106,7 +109,7 @@ impl<R: Read> PeekBufReader<R> {
         // If our capacity is at least half unused (and sufficiently big),
         // move the elements back to the start.
         let cap = self.buf_storage.capacity();
-        if cap >= 3 * Self::MIN_READ && self.buf_begin >= self.buf_storage.capacity() / 2 {
+        if cap >= Self::MIN_RECLAIM_SIZE && self.buf_begin >= self.buf_storage.capacity() / 2 {
             // Shrink desired front space a bit since we're relatively lacking space at the end.
             self.desired_front_space = self.desired_front_space.min(self.buf_begin) * 2 / 3;
             self.buf_storage
@@ -128,57 +131,57 @@ impl<R: Read> PeekBufReader<R> {
     }
 }
 
-impl<R: Read> PeekRead for PeekBufReader<R> {
+impl<R: Read> PeekRead for BufPeekReader<R> {
     fn peek(&mut self) -> PeekCursor<'_> {
         PeekCursor::new(self)
     }
 }
 
-impl<R: Read> PeekReadImpl for PeekBufReader<R> {
-    fn peek_read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        self.request_buffer(self.peek_pos + buf.len().min(Self::MIN_READ))?;
-        let mut peek_buffer = self.buffer().get(self.peek_pos..).unwrap_or_default();
+impl<R: Read> PeekReadImpl for BufPeekReader<R> {
+    fn peek_read(&mut self, state: &mut PeekCursorState, buf: &mut [u8]) -> Result<usize> {
+        self.request_buffer(state.peek_pos as usize + buf.len())?;
+        let mut peek_buffer = self.buffer().get(state.peek_pos as usize..).unwrap_or_default();
         let written = peek_buffer.read(buf).unwrap(); // Can't fail.
-        self.peek_pos += written;
+        state.peek_pos += written as u64;
         Ok(written)
     }
 
-    fn peek_fill_buf(&mut self) -> Result<&[u8]> {
-        self.request_buffer(self.peek_pos + Self::MIN_READ)?;
-        Ok(self.buffer().get(self.peek_pos..).unwrap_or_default())
+    fn peek_fill_buf(&mut self, state: &mut PeekCursorState) -> Result<&[u8]> {
+        self.request_buffer(state.peek_pos as usize)?;
+        Ok(self.buffer().get(state.peek_pos as usize..).unwrap_or_default())
     }
 
-    fn peek_consume(&mut self, amt: usize) {
-        self.peek_pos += amt;
+    fn peek_consume(&mut self, state: &mut PeekCursorState, amt: usize) {
+        state.peek_pos += amt as u64;
     }
 
-    fn peek_read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
-        self.ensure_buffer(self.peek_pos + buf.len())?;
-        let mut peek_buffer = &self.buffer()[self.peek_pos..];
-        self.peek_pos += peek_buffer.read(buf).unwrap(); // Can't fail.
+    fn peek_read_exact(&mut self, state: &mut PeekCursorState, buf: &mut [u8]) -> Result<()> {
+        self.ensure_buffer(state.peek_pos as usize + buf.len())?;
+        let mut peek_buffer = &self.buffer()[state.peek_pos as usize..];
+        state.peek_pos += peek_buffer.read(buf).unwrap() as u64; // Can't fail.
         Ok(())
     }
 
-    fn peek_stream_position(&mut self) -> Result<u64> {
-        Ok(self.peek_pos as u64)
+    fn peek_stream_position(&mut self, state: &mut PeekCursorState) -> Result<u64> {
+        Ok(state.peek_pos)
     }
 
-    fn peek_seek(&mut self, pos: SeekFrom) -> Result<u64> {
+    fn peek_seek(&mut self, state: &mut PeekCursorState, pos: SeekFrom) -> Result<u64> {
         match pos {
-            SeekFrom::Start(offset) => self.peek_pos = offset as usize,
+            SeekFrom::Start(offset) => state.peek_pos = offset,
             SeekFrom::Current(offset) => {
-                self.peek_pos = (self.peek_pos as i64 + offset).max(0) as usize
+                state.peek_pos = (state.peek_pos as i64 + offset).max(0) as u64
             }
             SeekFrom::End(offset) => {
                 self.request_buffer(usize::MAX)?;
-                self.peek_pos = (self.buffer().len() as i64 + offset).max(0) as usize;
+                state.peek_pos = (self.buffer().len() as i64 + offset).max(0) as u64;
             }
         }
-        Ok(self.peek_pos as u64)
+        Ok(state.peek_pos)
     }
 }
 
-impl<R: Read> Read for PeekBufReader<R> {
+impl<R: Read> Read for BufPeekReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         // If we don't have any buffered data and we're doing a massive read
         // (larger than our internal buffer), bypass our internal buffer
@@ -192,14 +195,14 @@ impl<R: Read> Read for PeekBufReader<R> {
     }
 }
 
-impl<R: Read> BufRead for PeekBufReader<R> {
+impl<R: Read> BufRead for BufPeekReader<R> {
     fn fill_buf(&mut self) -> Result<&[u8]> {
         if self.buffer().is_empty() {
             self.buf_begin = 0;
             self.buf_storage.clear();
             self.inner
                 .by_ref()
-                .take(Self::MIN_READ as u64)
+                .take(self.min_read_size as u64)
                 .read_to_end(&mut self.buf_storage)?;
         }
 
@@ -208,6 +211,5 @@ impl<R: Read> BufRead for PeekBufReader<R> {
 
     fn consume(&mut self, amt: usize) {
         self.buf_begin = (self.buf_begin + amt).min(self.buf_storage.len());
-        self.peek_pos = self.peek_pos.saturating_sub(amt);
     }
 }

@@ -57,7 +57,6 @@ impl PeekReadImpl for &[u8] {
             SeekFrom::Current(offset) => add_offset(state.peek_pos, offset),
             SeekFrom::End(offset) => add_offset(self.len() as u64, offset),
         };
-        state.peek_pos = state.peek_pos.min(self.len() as u64);
         Ok(state.peek_pos)
     }
 
@@ -114,11 +113,27 @@ impl<T: PeekRead> PeekReadImpl for Take<T> {
             SeekFrom::Start(offset) => offset,
             SeekFrom::Current(offset) => add_offset(state.peek_pos, offset),
             SeekFrom::End(offset) => {
-                let end = io::copy(&mut self.peek().take(limit_from_start), &mut io::sink())?;
+                // Is there a more efficient way without specialization?
+                let end = {
+                    let mut dummy: u8 = 0;
+                    let mut peeker = self.peek();
+                    peeker.seek(SeekFrom::Start(limit_from_start))?;
+                    let is_eof = peeker.read(std::slice::from_mut(&mut dummy))? == 0;
+
+                    if is_eof {
+                        // Have to scan to find real end.
+                        peeker.seek(SeekFrom::Start(0))?;
+                        io::copy(&mut peeker, &mut io::sink())?
+                    } else {
+                        limit_from_start
+                    }
+                };
+
                 add_offset(end, offset)
             }
         };
-        self.set_limit(limit_from_start.saturating_sub(state.peek_pos));
+        state.peek_pos = state.peek_pos.min(limit_from_start);
+        self.set_limit(limit_from_start - state.peek_pos);
         Ok(state.peek_pos)
     }
 
@@ -145,14 +160,15 @@ impl<T: PeekRead> PeekReadImpl for Take<T> {
         let mut reader = self.peek();
         reader.seek(SeekFrom::Start(state.peek_pos))?;
         reader.take(limit.min(state.buffer_size as u64)).read_to_end(&mut state.buf)?;
-        state.buf_pos = 0;
         Ok(&state.buf)
     }
 
     fn peek_consume(&mut self, state: &mut PeekCursorState, amt: usize) {
         let limit = self.limit();
+        let limit_from_start = limit + state.peek_pos;
         state.peek_pos += amt as u64;
-        self.set_limit(limit.saturating_sub(amt as u64));
+        state.peek_pos = state.peek_pos.min(limit_from_start);
+        self.set_limit(limit_from_start - state.peek_pos);
     }
 }
 
