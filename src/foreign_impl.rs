@@ -159,53 +159,5 @@ impl<T: PeekRead> PeekReadImpl for Take<T> {
 
 
 
-
-
-
-
-
-
-// impl<T: PeekReadImpl> PeekReadImpl for Take<T> {
-//     fn peek_seek(&mut self, state: &mut PeekCursorState, pos: SeekFrom) -> Result<u64> {
-//         let limit = self.limit();
-//         state.peek_pos = match pos {
-//             SeekFrom::Start(offset) => offset,
-//             SeekFrom::Current(offset) => add_offset(state.peek_pos, offset),
-//             SeekFrom::End(offset) => add_offset(limit as u64, offset),
-//         };
-//     }
-
-//     fn peek_read(&mut self, state: &mut PeekCursorState, buf: &mut [u8]) -> Result<usize> {
-//         let limit = self.limit();
-//         let remaining = limit.saturating_sub(self.peek_stream_position(state)?) as usize;
-//         dbg!(remaining);
-//         let max_peek = remaining.min(buf.len());
-//         let written = self.get_mut().peek_read(state, &mut buf[..max_peek])?;
-
-//     }
-
-//     fn peek_fill_buf(&mut self, state: &mut PeekCursorState) -> Result<&[u8]> {
-//         let limit = self.limit() as usize;
-//         if limit == 0 {
-//             return Ok(&[]);
-//         }
-
-//         let buf = self.get_mut().peek_fill_buf(state)?;
-//         let n = buf.len().min(limit);
-//         Ok(&buf[..n])
-//     }
-
-//     fn peek_consume(&mut self, state: &mut PeekCursorState, amt: usize) {
-//         self.get_mut().consume(amt);
-//         let limit = self.limit();
-//         self.set_limit(limit.saturating_sub(amt as u64));
-//     }
-
-// }
-
-
-
-
-
 // TODO: Not sure if this is possible, there are then two peek cursors.
 // impl<T: PeekRead, U: PeekRead> PeekRead for Chain<T, U> { }

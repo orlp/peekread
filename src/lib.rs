@@ -32,3 +32,10 @@ pub trait PeekRead: Read {
     /// To change this use [`PeekCursor::buffered`].
     fn peek(&mut self) -> PeekCursor<'_>;
 }
+
+
+/// A wrapper for a [`Read`] stream that implements [`PeekRead`] using a buffer to store peeked data.
+pub struct BufPeekReader;
+
+/// A wrapper for a [`Read`] + [`Seek`] stream that implements [`PeekRead`] using seeking.
+pub struct SeekPeekReader;

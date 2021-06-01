@@ -123,6 +123,11 @@ impl<'a> BufRead for PeekCursor<'a> {
     }
 }
 
+impl<'a> Drop for PeekCursor<'a> {
+    fn drop(&mut self) {
+        self.inner.peek_drop(&mut self.state)
+    }
+}
 
 /// A `PeekCursor` that does not override the default implementations.
 /// Used to provide our default implementations without being circular.

@@ -57,4 +57,9 @@ pub trait PeekReadImpl {
     ) -> Result<usize> {
         DefaultImplPeekCursor::new(self, state).read_to_string(buf)
     }
+
+    /// Called when the `PeekCursor` is dropped.
+    fn peek_drop<'a>(&'a mut self, _state: &'a mut PeekCursorState) {
+        // Do nothing by default.
+    }
 }
