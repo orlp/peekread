@@ -2,10 +2,7 @@ use crate::{PeekRead, PeekCursor};
 use crate::detail::{PeekReadImpl, PeekCursorState};
 use std::io::*;
 use std::io;
-
-fn add_offset(base: u64, offset: i64) -> u64 {
-    (base as i64).saturating_add(offset).max(0) as u64
-}
+use crate::util::add_offset;
 
 impl<T: PeekRead + ?Sized> PeekRead for &mut T {
     #[inline]
@@ -143,9 +140,9 @@ impl<T: PeekRead> PeekReadImpl for Take<T> {
         }
 
         let limit = self.limit();
-        let mut reader = self.peek();
-        reader.seek(SeekFrom::Start(state.peek_pos))?;
-        let written = reader.take(limit).read(buf)? as u64;
+        let mut peeker = self.peek();
+        peeker.seek(SeekFrom::Start(state.peek_pos))?;
+        let written = peeker.take(limit).read(buf)? as u64;
         state.peek_pos += written;
         self.set_limit(limit - written);
         Ok(written as usize)
@@ -156,10 +153,9 @@ impl<T: PeekRead> PeekReadImpl for Take<T> {
             return Ok(&[]);
         }
 
-        let limit = self.limit();
-        let mut reader = self.peek();
-        reader.seek(SeekFrom::Start(state.peek_pos))?;
-        reader.take(limit.min(state.buffer_size as u64)).read_to_end(&mut state.buf)?;
+        let mut peeker = self.peek();
+        peeker.seek(SeekFrom::Start(state.peek_pos))?;
+        peeker.read(&mut state.buf)?;
         Ok(&state.buf)
     }
 
