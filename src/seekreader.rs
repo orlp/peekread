@@ -11,6 +11,9 @@ pub struct SeekPeekReader<R> {
 
 impl<R: Read + Seek> SeekPeekReader<R> {
     /// Creates a new [`SeekPeekReader`].
+    ///
+    /// When calling `.peek()` on this object the stream is restored to
+    /// its original position when the [`PeekCursor`] is dropped using a seek.
     pub fn new(reader: R) -> Self {
         Self {
             inner: reader,
@@ -76,6 +79,7 @@ impl<R: Seek + Read> Read for SeekPeekReader<R> {
 
 impl<R: Read + Seek> PeekRead for SeekPeekReader<R> {
     fn peek(&mut self) -> PeekCursor<'_> {
+        self.start_pos = None;
         PeekCursor::new(self)
     }
 }
@@ -86,6 +90,7 @@ impl<R: Read + Seek> PeekReadImpl for SeekPeekReader<R> {
         let new_seek_pos = match pos {
             SeekFrom::Start(offset) => self.inner.seek(SeekFrom::Start(start_pos + offset))?,
             SeekFrom::Current(offset) => 
+                // Avoid needless seeks.
                 if offset == 0 {
                     start_pos + state.peek_pos
                 } else {
@@ -111,6 +116,7 @@ impl<R: Read + Seek> PeekReadImpl for SeekPeekReader<R> {
     }
 
     fn peek_fill_buf<'a>(&'a mut self, state: &'a mut PeekCursorState) -> Result<&'a [u8]> {
+        // With specialization we could provide a more optimal fill_buf here.
         self.inner.read(&mut state.buf)?;
         Ok(&state.buf)
     }
@@ -121,8 +127,11 @@ impl<R: Read + Seek> PeekReadImpl for SeekPeekReader<R> {
 
     fn peek_drop(&mut self, _state: &mut PeekCursorState) {
         if let Some(start_pos) = self.start_pos {
-            // TODO: Is this acceptable? Maybe loop on interrupted at least?
-            let _ = self.inner.seek(SeekFrom::Start(start_pos));
+            while let Err(e) = self.inner.seek(SeekFrom::Start(start_pos)) {
+                if e.kind() != std::io::ErrorKind::Interrupted {
+                    break;
+                }
+            }
         }
     }
 }

@@ -10,9 +10,9 @@ mod bufreader;
 mod util;
 
 use std::io::*;
-pub use bufreader::BufPeekReader;
-pub use seekreader::SeekPeekReader;
 pub use detail::cursor::PeekCursor;
+pub use seekreader::SeekPeekReader;
+pub use bufreader::BufPeekReader;
 
 
 /// A trait for a [`Read`] stream that supports peeking ahead in the stream.
@@ -31,7 +31,7 @@ pub trait PeekRead: Read {
     /// are unbuffered where possible and will only read as much as necessary from the underlying
     /// stream, if reading can block or otherwise invoke a cost. This can be circumvented by
     /// buffering the underlying stream (e.g. with [`BufPeekReader::set_min_read_size`], or
-    /// for [`PeekSeekReader`] by wrapping the inner stream in a [`BufReader`]), or one can wrap the
+    /// for [`SeekPeekReader`] by wrapping the inner stream in a [`BufReader`]), or one can wrap the
     /// peek cursor itself in [`BufReader`], although this will only buffer reads from this
     /// particular peek cursor.
     fn peek(&mut self) -> PeekCursor<'_>;
