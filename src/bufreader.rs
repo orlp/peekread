@@ -82,8 +82,9 @@ impl<R: Read> BufPeekReader<R> {
     fn request_buffer(&mut self, nbytes: usize) -> Result<()> {
         let nbytes_needed = nbytes.saturating_sub(self.buffer().len());
         if nbytes_needed > 0 {
-            self.request_space_at_end();
+            self.reclaim_space_from_front();
             let read_size = nbytes_needed.max(self.min_read_size);
+            self.buf_storage.reserve(read_size);
             self.inner
                 .by_ref()
                 .take(read_size as u64)
@@ -92,29 +93,17 @@ impl<R: Read> BufPeekReader<R> {
         Ok(())
     }
 
-    // Ensure the buffer to be at least nbytes in length.
-    fn ensure_buffer(&mut self, nbytes: usize) -> Result<()> {
-        self.request_buffer(nbytes)?;
-        if self.buffer().len() < nbytes {
-            Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "failed to fill peek buffer",
-            ))
-        } else {
-            Ok(())
-        }
-    }
-
-    fn request_space_at_end(&mut self) {
+    fn reclaim_space_from_front(&mut self) {
         // If our capacity is at least half unused (and sufficiently big),
         // move the elements back to the start.
         let cap = self.buf_storage.capacity();
         if cap >= Self::MIN_RECLAIM_SIZE && self.buf_begin >= self.buf_storage.capacity() / 2 {
             // Shrink desired front space a bit since we're relatively lacking space at the end.
-            self.desired_front_space = self.desired_front_space.min(self.buf_begin) * 2 / 3;
+            self.desired_front_space = self.desired_front_space * 2 / 3;
+            let front_space = self.desired_front_space.min(self.buf_begin);
             self.buf_storage
-                .drain(self.desired_front_space..self.buf_begin);
-            self.buf_begin = 0;
+                .drain(front_space..self.buf_begin);
+            self.buf_begin = front_space;
         }
     }
 
@@ -122,7 +111,7 @@ impl<R: Read> BufPeekReader<R> {
         if nbytes > self.buf_begin {
             // Not enough space at the front, we have to reallocate or move elements. To prevent
             // this from occurring all the time when doing big unreads, increase our desired front space.
-            self.desired_front_space = 2 * self.desired_front_space.max(nbytes) + 32;
+            self.desired_front_space = (2 * self.desired_front_space).max(nbytes) + 32;
             let extra_front_space = self.desired_front_space - self.buf_begin;
             self.buf_storage
                 .splice(0..0, std::iter::repeat(0).take(extra_front_space));
@@ -147,7 +136,7 @@ impl<R: Read> PeekReadImpl for BufPeekReader<R> {
     }
 
     fn peek_fill_buf(&mut self, state: &mut PeekCursorState) -> Result<&[u8]> {
-        self.request_buffer(state.peek_pos as usize)?;
+        self.request_buffer(state.peek_pos as usize + 1)?;
         Ok(self.buffer().get(state.peek_pos as usize..).unwrap_or_default())
     }
 
@@ -156,10 +145,11 @@ impl<R: Read> PeekReadImpl for BufPeekReader<R> {
     }
 
     fn peek_read_exact(&mut self, state: &mut PeekCursorState, buf: &mut [u8]) -> Result<()> {
-        self.ensure_buffer(state.peek_pos as usize + buf.len())?;
-        let mut peek_buffer = &self.buffer()[state.peek_pos as usize..];
-        state.peek_pos += peek_buffer.read(buf).unwrap() as u64; // Can't fail.
-        Ok(())
+        self.request_buffer(state.peek_pos as usize + buf.len())?;
+        let mut peek_buffer = self.buffer().get(state.peek_pos as usize..).unwrap_or_default();
+        let written = peek_buffer.read_exact(buf)?;
+        state.peek_pos += buf.len() as u64;
+        Ok(written)
     }
 
     fn peek_stream_position(&mut self, state: &mut PeekCursorState) -> Result<u64> {
