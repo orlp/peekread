@@ -11,6 +11,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = { version = "0.4.0", features = ["arbitrary-derive"] }
+paste = "1.0.5"
 
 [dependencies.peekread]
 path = ".."

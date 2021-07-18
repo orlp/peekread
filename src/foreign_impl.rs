@@ -2,7 +2,7 @@ use crate::{PeekRead, PeekCursor};
 use crate::detail::{PeekReadImpl, PeekCursorState};
 use std::io::*;
 use std::io;
-use crate::util::add_offset;
+use crate::util::seek_add_offset;
 
 impl<T: PeekRead + ?Sized> PeekRead for &mut T {
     #[inline]
@@ -51,8 +51,8 @@ impl PeekReadImpl for &[u8] {
     fn peek_seek(&mut self, state: &mut PeekCursorState, pos: SeekFrom) -> Result<u64> {
         state.peek_pos = match pos {
             SeekFrom::Start(offset) => offset,
-            SeekFrom::Current(offset) => add_offset(state.peek_pos, offset),
-            SeekFrom::End(offset) => add_offset(self.len() as u64, offset),
+            SeekFrom::Current(offset) => seek_add_offset(state.peek_pos, offset)?,
+            SeekFrom::End(offset) => seek_add_offset(self.len() as u64, offset)?,
         };
         Ok(state.peek_pos)
     }
@@ -61,6 +61,12 @@ impl PeekReadImpl for &[u8] {
         let written = self.get(state.peek_pos as usize..).unwrap_or_default().read(buf)?;
         state.peek_pos += written as u64;
         Ok(written)
+    }
+    
+    fn peek_read_exact(&mut self, state: &mut PeekCursorState, buf: &mut [u8]) -> Result<()> {
+        self.get(state.peek_pos as usize..).unwrap_or_default().read_exact(buf)?;
+        state.peek_pos += buf.len() as u64;
+        Ok(())
     }
 
     fn peek_fill_buf(&mut self, state: &mut PeekCursorState) -> Result<&[u8]> {
@@ -80,16 +86,27 @@ impl<T: AsRef<[u8]>> PeekRead for Cursor<T> {
 
 impl<T: AsRef<[u8]>> PeekReadImpl for Cursor<T> {
     fn peek_seek(&mut self, state: &mut PeekCursorState, pos: SeekFrom) -> Result<u64> {
-        self.get_ref().as_ref().peek_seek(state, pos)
+        let start_pos = self.stream_position()? as usize;
+        let slice = self.get_ref().as_ref();
+        slice.get(start_pos..).unwrap_or_default().peek_seek(state, pos)
     }
 
     fn peek_read(&mut self, state: &mut PeekCursorState, buf: &mut [u8]) -> Result<usize> {
-        self.get_ref().as_ref().peek_read(state, buf)
+        let start_pos = self.stream_position()? as usize;
+        let slice = self.get_ref().as_ref();
+        slice.get(start_pos..).unwrap_or_default().peek_read(state, buf)
+    }
+
+    fn peek_read_exact(&mut self, state: &mut PeekCursorState, buf: &mut [u8]) -> Result<()> {
+        let start_pos = self.stream_position()? as usize;
+        let slice = self.get_ref().as_ref();
+        slice.get(start_pos..).unwrap_or_default().peek_read_exact(state, buf)
     }
 
     fn peek_fill_buf<'a>(&'a mut self, state: &'a mut PeekCursorState) -> Result<&'a [u8]> {
+        let start_pos = self.stream_position()? as usize;
         let slice = self.get_ref().as_ref();
-        Ok(slice.get(state.peek_pos as usize..).unwrap_or_default())
+        Ok(slice.get(start_pos + state.peek_pos as usize..).unwrap_or_default())
     }
 
     fn peek_consume(&mut self, state: &mut PeekCursorState, amt: usize) {
@@ -108,7 +125,7 @@ impl<T: PeekRead> PeekReadImpl for Take<T> {
         let limit_from_start = state.peek_pos + self.limit();
         state.peek_pos = match pos {
             SeekFrom::Start(offset) => offset,
-            SeekFrom::Current(offset) => add_offset(state.peek_pos, offset),
+            SeekFrom::Current(offset) => seek_add_offset(state.peek_pos, offset)?,
             SeekFrom::End(offset) => {
                 // Is there a more efficient way without specialization?
                 let end = {
@@ -126,7 +143,7 @@ impl<T: PeekRead> PeekReadImpl for Take<T> {
                     }
                 };
 
-                add_offset(end, offset)
+                seek_add_offset(end, offset)?
             }
         };
         state.peek_pos = state.peek_pos.min(limit_from_start);

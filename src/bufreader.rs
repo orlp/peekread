@@ -1,31 +1,28 @@
+use std::collections::VecDeque;
 use std::io::*;
 
+use crate::util::seek_add_offset;
 use crate::{PeekRead, PeekCursor, detail::{PeekReadImpl, PeekCursorState}};
 
 /// A wrapper for a [`Read`] stream that implements [`PeekRead`] using a buffer to store peeked data.
 #[derive(Debug)]
 pub struct BufPeekReader<R> {
     // Where we store the peeked but not yet read data.
-    // This data lives in the buffer buf_storage[buf_begin..].
-    // We can thus have free space at the front.
-    buf_storage: Vec<u8>,
-    buf_begin: usize,
-
-    desired_front_space: usize,
+    buf_storage: VecDeque<u8>,
+    // A vec used for temporary storage.
+    tmp: Vec<u8>,
     min_read_size: usize,
-
     inner: R,
 }
 
 impl<R: Read> BufPeekReader<R> {
-    const MIN_RECLAIM_SIZE: usize = 1024 * 20;
+    const MIN_READ_TO_END: usize = 32;
 
     /// Creates a new [`BufPeekReader`].
     pub fn new(reader: R) -> Self {
         Self {
-            buf_storage: Vec::new(),
-            buf_begin: 0,
-            desired_front_space: 32,
+            buf_storage: VecDeque::new(),
+            tmp: Vec::new(),
             min_read_size: 0,
             inner: reader,
         }
@@ -33,10 +30,10 @@ impl<R: Read> BufPeekReader<R> {
 
     /// Pushes the given data into the stream at the front, pushing the read cursor back.
     pub fn unread(&mut self, data: &[u8]) {
-        let n = data.len();
-        self.ensure_space_at_front(n);
-        self.buf_begin -= n;
-        self.buf_storage[self.buf_begin..self.buf_begin + n].copy_from_slice(data)
+        self.buf_storage.reserve(data.len());
+        for byte in data.iter().copied().rev() {
+            self.buf_storage.push_front(byte);
+        }
     }
 
     /// Sets the minimum size used when reading from the underlying stream. Setting this allows
@@ -54,8 +51,8 @@ impl<R: Read> BufPeekReader<R> {
     /// Returns a reference to the internally buffered data.
     ///
     /// Unlike [`BufRead::fill_buf`], this will not attempt to fill the buffer if it is empty.
-    pub fn buffer(&self) -> &[u8] {
-        &self.buf_storage[self.buf_begin..]
+    pub fn buffer(&self) -> &VecDeque<u8> {
+        &self.buf_storage
     }
 
     /// Gets a reference to the underlying reader.
@@ -80,43 +77,25 @@ impl<R: Read> BufPeekReader<R> {
     // Try to fill the buffer so that it's at least nbytes in length
     // (may fail to do so if EOF is reached - no error is reported then).
     fn request_buffer(&mut self, nbytes: usize) -> Result<()> {
-        let nbytes_needed = nbytes.saturating_sub(self.buffer().len());
+        let nbytes_needed = nbytes.saturating_sub(self.buf_storage.len());
         if nbytes_needed > 0 {
-            self.reclaim_space_from_front();
             let read_size = nbytes_needed.max(self.min_read_size);
-            self.buf_storage.reserve(read_size);
             self.inner
                 .by_ref()
                 .take(read_size as u64)
-                .read_to_end(&mut self.buf_storage)?;
+                .read_to_end(&mut self.tmp)?;
+            self.buf_storage.reserve(self.tmp.len());
+            self.buf_storage.extend(self.tmp.drain(..));
         }
         Ok(())
     }
 
-    fn reclaim_space_from_front(&mut self) {
-        // If our capacity is at least half unused (and sufficiently big),
-        // move the elements back to the start.
-        let cap = self.buf_storage.capacity();
-        if cap >= Self::MIN_RECLAIM_SIZE && self.buf_begin >= self.buf_storage.capacity() / 2 {
-            // Shrink desired front space a bit since we're relatively lacking space at the end.
-            self.desired_front_space = self.desired_front_space * 2 / 3;
-            let front_space = self.desired_front_space.min(self.buf_begin);
-            self.buf_storage
-                .drain(front_space..self.buf_begin);
-            self.buf_begin = front_space;
-        }
-    }
-
-    fn ensure_space_at_front(&mut self, nbytes: usize) {
-        if nbytes > self.buf_begin {
-            // Not enough space at the front, we have to reallocate or move elements. To prevent
-            // this from occurring all the time when doing big unreads, increase our desired front space.
-            self.desired_front_space = (2 * self.desired_front_space).max(nbytes) + 32;
-            let extra_front_space = self.desired_front_space - self.buf_begin;
-            self.buf_storage
-                .splice(0..0, std::iter::repeat(0).take(extra_front_space));
-            self.buf_begin += extra_front_space;
-        }
+    // The buffered data starting from the peek position as two slices.
+    fn peek_slices(&self, peek_pos: usize) -> (&[u8], &[u8]) {
+        let (a, b) = self.buf_storage.as_slices();
+        let first = a.get(peek_pos..).unwrap_or_default();
+        let second = b.get(peek_pos.saturating_sub(a.len())..).unwrap_or_default();
+        (first, second)
     }
 }
 
@@ -129,15 +108,21 @@ impl<R: Read> PeekRead for BufPeekReader<R> {
 impl<R: Read> PeekReadImpl for BufPeekReader<R> {
     fn peek_read(&mut self, state: &mut PeekCursorState, buf: &mut [u8]) -> Result<usize> {
         self.request_buffer(state.peek_pos as usize + buf.len())?;
-        let mut peek_buffer = self.buffer().get(state.peek_pos as usize..).unwrap_or_default();
-        let written = peek_buffer.read(buf).unwrap(); // Can't fail.
+        let (mut first, mut second) = self.peek_slices(state.peek_pos as usize);
+        let mut written = first.read(buf).unwrap(); // Can't fail.
+        written += second.read(&mut buf[written..]).unwrap(); // Can't fail.
         state.peek_pos += written as u64;
         Ok(written)
     }
 
     fn peek_fill_buf(&mut self, state: &mut PeekCursorState) -> Result<&[u8]> {
         self.request_buffer(state.peek_pos as usize + 1)?;
-        Ok(self.buffer().get(state.peek_pos as usize..).unwrap_or_default())
+        let (first, second) = self.peek_slices(state.peek_pos as usize);
+        if first.len() > 0 {
+            Ok(first)
+        } else {
+            Ok(second)
+        }
     }
 
     fn peek_consume(&mut self, state: &mut PeekCursorState, amt: usize) {
@@ -146,10 +131,11 @@ impl<R: Read> PeekReadImpl for BufPeekReader<R> {
 
     fn peek_read_exact(&mut self, state: &mut PeekCursorState, buf: &mut [u8]) -> Result<()> {
         self.request_buffer(state.peek_pos as usize + buf.len())?;
-        let mut peek_buffer = self.buffer().get(state.peek_pos as usize..).unwrap_or_default();
-        let written = peek_buffer.read_exact(buf)?;
+        let (mut first, mut second) = self.peek_slices(state.peek_pos as usize);
+        let written = first.read(buf).unwrap(); // Can't fail.
+        second.read_exact(&mut buf[written..])?;
         state.peek_pos += buf.len() as u64;
-        Ok(written)
+        Ok(())
     }
 
     fn peek_stream_position(&mut self, state: &mut PeekCursorState) -> Result<u64> {
@@ -160,11 +146,15 @@ impl<R: Read> PeekReadImpl for BufPeekReader<R> {
         match pos {
             SeekFrom::Start(offset) => state.peek_pos = offset,
             SeekFrom::Current(offset) => {
-                state.peek_pos = (state.peek_pos as i64 + offset).max(0) as u64
+                state.peek_pos = seek_add_offset(state.peek_pos, offset)?;
             }
             SeekFrom::End(offset) => {
-                self.request_buffer(usize::MAX)?;
-                state.peek_pos = (self.buffer().len() as i64 + offset).max(0) as u64;
+                let mut requested_buffer_size = self.buf_storage.len();
+                while self.buf_storage.len() == requested_buffer_size {
+                    requested_buffer_size = (requested_buffer_size*2).max(Self::MIN_READ_TO_END);
+                    self.request_buffer(requested_buffer_size)?;
+                }
+                state.peek_pos = seek_add_offset(self.buf_storage.len() as u64, offset)?;
             }
         }
         Ok(state.peek_pos)
@@ -173,33 +163,38 @@ impl<R: Read> PeekReadImpl for BufPeekReader<R> {
 
 impl<R: Read> Read for BufPeekReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        // If we don't have any buffered data and we're doing a massive read
-        // (larger than our internal buffer), bypass our internal buffer
-        // entirely.
-        if self.buffer().is_empty() && buf.len() >= self.buf_storage.capacity() {
-            return self.inner.read(buf);
-        }
-        let written = self.fill_buf()?.read(buf).unwrap(); // Can't fail.
-        self.consume(written);
-        Ok(written)
+        let (mut first, mut second) = self.buf_storage.as_slices();
+        let mut written = first.read(buf).unwrap(); // Can't fail.
+        written += second.read(&mut buf[written..]).unwrap(); // Can't fail.
+        self.inner.read(&mut buf[written..]).map(|inner_written| {
+            self.consume(written);
+            written + inner_written
+        })
+    }
+
+
+    fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
+        let (mut first, mut second) = self.buf_storage.as_slices();
+        let mut written = first.read(buf).unwrap(); // Can't fail.
+        written += second.read(&mut buf[written..])?; // Can't fail.
+        self.inner.read_exact(&mut buf[written..]).map(|_| self.consume(buf.len()))
     }
 }
 
 impl<R: Read> BufRead for BufPeekReader<R> {
     fn fill_buf(&mut self) -> Result<&[u8]> {
-        if self.buffer().is_empty() {
-            self.buf_begin = 0;
-            self.buf_storage.clear();
-            self.inner
-                .by_ref()
-                .take(self.min_read_size as u64)
-                .read_to_end(&mut self.buf_storage)?;
+        self.request_buffer(self.min_read_size)?;
+        let (first, second) = self.buf_storage.as_slices();
+        if first.len() > 0 {
+            Ok(first)
+        } else {
+            Ok(second)
         }
-
-        Ok(self.buffer())
     }
 
     fn consume(&mut self, amt: usize) {
-        self.buf_begin = (self.buf_begin + amt).min(self.buf_storage.len());
+        for _ in 0..amt.min(self.buf_storage.len()) {
+            self.buf_storage.pop_front();
+        }
     }
 }

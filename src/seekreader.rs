@@ -1,5 +1,5 @@
 use crate::{PeekRead, PeekCursor, detail::{PeekReadImpl, PeekCursorState}};
-use crate::util::add_offset;
+use crate::util::seek_add_offset;
 use std::io::*;
 
 /// A wrapper for a [`Read`] + [`Seek`] stream that implements [`PeekRead`] using seeking.
@@ -40,12 +40,10 @@ impl<R: Read + Seek> SeekPeekReader<R> {
         self.inner
     }
 
-    fn get_start_pos(&mut self) -> Result<u64> {
-        if self.start_pos.is_none() {
-            self.start_pos = Some(self.inner.stream_position()?);
-        };
-
-        Ok(self.start_pos.unwrap())
+    fn init_start_pos(&mut self) -> Result<u64> {
+        let start_pos = self.start_pos.map(Ok).unwrap_or_else(|| self.inner.stream_position())?;
+        self.start_pos = Some(start_pos);
+        Ok(start_pos)
     }
 }
 
@@ -85,44 +83,58 @@ impl<R: Read + Seek> PeekRead for SeekPeekReader<R> {
 }
 
 impl<R: Read + Seek> PeekReadImpl for SeekPeekReader<R> {
-    fn peek_seek(&mut self, state: &mut PeekCursorState, pos: SeekFrom) -> Result<u64> {
-        let start_pos = self.get_start_pos()?;
-        let new_seek_pos = match pos {
+    fn peek_seek(&mut self, _state: &mut PeekCursorState, pos: SeekFrom) -> Result<u64> {
+        let start_pos = self.init_start_pos()?;
+        let cur_pos = self.stream_position()?;
+        let new_pos = match pos {
             SeekFrom::Start(offset) => self.inner.seek(SeekFrom::Start(start_pos + offset))?,
-            SeekFrom::Current(offset) => 
-                // Avoid needless seeks.
-                if offset == 0 {
-                    start_pos + state.peek_pos
-                } else {
-                    self.inner.seek(SeekFrom::Start(start_pos + add_offset(state.peek_pos, offset)))?
-                },
+            SeekFrom::Current(offset) => self.inner.seek(SeekFrom::Current(offset))?,
             SeekFrom::End(offset) => {
-                let pos = self.inner.seek(SeekFrom::End(offset))?;
-                if pos < start_pos {
-                    self.inner.seek(SeekFrom::Start(0))?
-                } else {
-                    pos
+                // TODO: can this be more efficient?
+                let end_pos = self.inner.seek(SeekFrom::End(0))?.max(start_pos);
+                match seek_add_offset(end_pos, offset) {
+                    Ok(o) => self.inner.seek(SeekFrom::Start(o))?,
+                    Err(e) => {
+                        // Restore position.
+                        self.inner.seek(SeekFrom::Start(cur_pos))?;
+                        return Err(e)
+                    }
                 }
             }
         };
-        state.peek_pos = new_seek_pos - start_pos;
-        Ok(state.peek_pos)
+
+        if new_pos < start_pos {
+            self.inner.seek(SeekFrom::Start(cur_pos))?;
+            Err(Error::new(ErrorKind::InvalidInput, "invalid seek to a negative or overflowing position"))
+        } else {
+            Ok(new_pos - start_pos)
+        }
     }
 
-    fn peek_read(&mut self, state: &mut PeekCursorState, buf: &mut [u8]) -> Result<usize> {
+    fn peek_read(&mut self, _state: &mut PeekCursorState, buf: &mut [u8]) -> Result<usize> {
+        self.init_start_pos()?;
         let written = self.inner.read(buf)?;
-        state.peek_pos += written as u64;
         Ok(written)
     }
 
+    fn peek_read_exact(&mut self, _state: &mut PeekCursorState, buf: &mut [u8]) -> Result<()> {
+        self.init_start_pos()?;
+        self.inner.read_exact(buf)?;
+        Ok(())
+    }
+
     fn peek_fill_buf<'a>(&'a mut self, state: &'a mut PeekCursorState) -> Result<&'a [u8]> {
+        self.init_start_pos()?;
         // With specialization we could provide a more optimal fill_buf here.
-        self.inner.read(&mut state.buf)?;
+        let read = self.inner.read(&mut state.buf)?;
+        self.inner.seek(SeekFrom::Current(-(read as i64)))?;
         Ok(&state.buf)
     }
 
-    fn peek_consume(&mut self, state: &mut PeekCursorState, amt: usize) {
-        state.peek_pos += amt as u64;
+    fn peek_consume(&mut self, _state: &mut PeekCursorState, amt: usize) {
+        self.init_start_pos().ok();
+        // With specialization we could provide a more optimal fill_buf here.
+        self.inner.seek(SeekFrom::Current(amt as i64)).ok();
     }
 
     fn peek_drop(&mut self, _state: &mut PeekCursorState) {
