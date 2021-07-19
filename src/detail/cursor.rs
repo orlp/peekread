@@ -6,9 +6,9 @@ use crate::PeekRead;
 
 /// The internal state of a [`PeekCursor`]. See [`PeekReadImpl`].
 ///
-/// All fields here are just provided to help you make your implementation possible,
-/// you may use them in any way you see fit. [`PeekCursor::new`] initializes
-/// these fields to their default value.
+/// All fields here are just provided to help you make your implementation
+/// possible, you may use them in any way you see fit. [`PeekCursor::new`]
+/// initializes these fields to their default value.
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct PeekCursorState {
@@ -16,8 +16,8 @@ pub struct PeekCursorState {
     pub buf: [u8; 1],
 }
 
-/// An object implementing [`BufRead`] and [`Seek`] to peek ahead in a stream without
-/// affecting the original stream.
+/// An object implementing [`BufRead`] and [`Seek`] to peek ahead in a stream
+/// without affecting the original stream.
 pub struct PeekCursor<'a> {
     inner: &'a mut dyn PeekReadImpl,
     state: PeekCursorState,
@@ -26,9 +26,9 @@ pub struct PeekCursor<'a> {
 impl<'a> PeekCursor<'a> {
     /// Creates a new [`PeekCursor`].
     ///
-    /// Unless you are trying to implement [`PeekRead`] you will never call this, you
-    /// should look at [`PeekRead::peek`] instead. If you are trying to implement
-    /// [`PeekRead`], see [`PeekReadImpl`].
+    /// Unless you are trying to implement [`PeekRead`] you will never call
+    /// this, you should look at [`PeekRead::peek`] instead. If you are
+    /// trying to implement [`PeekRead`], see [`PeekReadImpl`].
     pub fn new(inner: &'a mut dyn PeekReadImpl) -> Self {
         Self {
             inner,

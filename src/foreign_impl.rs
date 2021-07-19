@@ -17,7 +17,6 @@ impl<T: PeekRead + ?Sized> PeekRead for Box<T> {
     }
 }
 
-
 impl PeekRead for Empty {
     fn peek(&mut self) -> PeekCursor<'_> {
         PeekCursor::new(self)
@@ -199,7 +198,6 @@ impl<T: PeekRead> PeekReadImpl for Take<T> {
         self.set_limit(limit_from_start - state.peek_pos);
     }
 }
-
 
 // TODO: Not sure if this is possible, there are then two peek cursors.
 // impl<T: PeekRead, U: PeekRead> PeekRead for Chain<T, U> { }

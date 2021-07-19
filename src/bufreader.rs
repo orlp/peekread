@@ -9,7 +9,8 @@ use crate::{
     PeekCursor, PeekRead,
 };
 
-/// A wrapper for a [`Read`] stream that implements [`PeekRead`] using a buffer to store peeked data.
+/// A wrapper for a [`Read`] stream that implements [`PeekRead`] using a buffer
+/// to store peeked data.
 #[derive(Debug)]
 pub struct BufPeekReader<R> {
     // Where we store the peeked but not yet read data.
@@ -33,7 +34,8 @@ impl<R: Read> BufPeekReader<R> {
         }
     }
 
-    /// Pushes the given data into the stream at the front, pushing the read cursor back.
+    /// Pushes the given data into the stream at the front, pushing the read
+    /// cursor back.
     pub fn unread(&mut self, data: &[u8]) {
         self.buf_storage.reserve(data.len());
         for byte in data.iter().copied().rev() {
@@ -41,9 +43,10 @@ impl<R: Read> BufPeekReader<R> {
         }
     }
 
-    /// Sets the minimum size used when reading from the underlying stream. Setting this allows
-    /// for efficient buffered reads on any stream similar to [`BufReader`], but is disabled
-    /// by default since doing bigger reads than requested might unnecessarily block.
+    /// Sets the minimum size used when reading from the underlying stream.
+    /// Setting this allows for efficient buffered reads on any stream
+    /// similar to [`BufReader`], but is disabled by default since doing
+    /// bigger reads than requested might unnecessarily block.
     pub fn set_min_read_size(&mut self, nbytes: usize) {
         self.min_read_size = nbytes;
     }
@@ -55,7 +58,8 @@ impl<R: Read> BufPeekReader<R> {
 
     /// Returns a reference to the internally buffered data.
     ///
-    /// Unlike [`BufRead::fill_buf`], this will not attempt to fill the buffer if it is empty.
+    /// Unlike [`BufRead::fill_buf`], this will not attempt to fill the buffer
+    /// if it is empty.
     pub fn buffer(&self) -> &VecDeque<u8> {
         &self.buf_storage
     }
@@ -178,7 +182,6 @@ impl<R: Read> Read for BufPeekReader<R> {
             written + inner_written
         })
     }
-
 
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         let (mut first, mut second) = self.buf_storage.as_slices();
