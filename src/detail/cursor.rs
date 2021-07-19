@@ -1,7 +1,7 @@
-use std::any::Any;
 use std::io::{BufRead, Read, Result, Seek, SeekFrom};
 
 use crate::detail::PeekReadImpl;
+#[cfg(doc)]
 use crate::PeekRead;
 
 /// The internal state of a [`PeekCursor`]. See [`PeekReadImpl`].
@@ -18,9 +18,6 @@ pub struct PeekCursorState {
 
 /// An object implementing [`BufRead`] and [`Seek`] to peek ahead in a stream without
 /// affecting the original stream.
-///
-/// [`PeekRead`]: crate::PeekRead
-/// [`PeekRead::peek`]: crate::PeekRead::peek
 pub struct PeekCursor<'a> {
     inner: &'a mut dyn PeekReadImpl,
     state: PeekCursorState,

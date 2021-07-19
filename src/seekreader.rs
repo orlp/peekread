@@ -5,7 +5,8 @@ use crate::{
 };
 use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom};
 
-/// A wrapper for a [`Read`] + [`Seek`] stream that implements [`PeekRead`] using seeking.
+/// A wrapper for a [`Read`] + [`Seek`] stream that implements [`PeekRead`]
+/// using seeking.
 #[derive(Debug)]
 pub struct SeekPeekReader<R> {
     inner: R,

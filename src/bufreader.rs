@@ -1,4 +1,6 @@
 use std::collections::VecDeque;
+#[cfg(doc)]
+use std::io::BufReader;
 use std::io::{BufRead, Read, Result, SeekFrom};
 
 use crate::util::seek_add_offset;

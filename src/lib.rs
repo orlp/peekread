@@ -1,6 +1,3 @@
-#![allow(unused_imports)]
-
-
 /// Details for those wishing to implement [`PeekRead`].
 pub mod detail;
 
@@ -13,6 +10,8 @@ pub use bufreader::BufPeekReader;
 pub use detail::cursor::PeekCursor;
 pub use seekreader::SeekPeekReader;
 use std::io::Read;
+#[cfg(doc)]
+use std::io::{BufRead, BufReader, Seek};
 
 
 /// A trait for a [`Read`] stream that supports peeking ahead in the stream.
