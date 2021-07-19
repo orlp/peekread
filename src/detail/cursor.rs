@@ -1,13 +1,13 @@
-use std::io::*;
 use std::any::Any;
+use std::io::*;
 
-use crate::PeekRead;
 use crate::detail::PeekReadImpl;
+use crate::PeekRead;
 
 /// The internal state of a [`PeekCursor`]. See [`PeekReadImpl`].
 ///
 /// All fields here are just provided to help you make your implementation possible,
-/// you may use them in any way you see fit. [`PeekCursor::new`] initializes 
+/// you may use them in any way you see fit. [`PeekCursor::new`] initializes
 /// these fields to their default value.
 #[non_exhaustive]
 #[derive(Debug)]
@@ -30,7 +30,7 @@ impl<'a> PeekCursor<'a> {
     /// Creates a new [`PeekCursor`].
     ///
     /// Unless you are trying to implement [`PeekRead`] you will never call this, you
-    /// should look at [`PeekRead::peek`] instead. If you are trying to implement 
+    /// should look at [`PeekRead::peek`] instead. If you are trying to implement
     /// [`PeekRead`], see [`PeekReadImpl`].
     pub fn new(inner: &'a mut dyn PeekReadImpl) -> Self {
         Self {
@@ -38,7 +38,7 @@ impl<'a> PeekCursor<'a> {
             state: PeekCursorState {
                 peek_pos: 0,
                 buf: [0],
-            }
+            },
         }
     }
 }
@@ -47,7 +47,7 @@ impl<'a> Seek for PeekCursor<'a> {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
         self.inner.peek_seek(&mut self.state, pos)
     }
-    
+
     fn stream_position(&mut self) -> Result<u64> {
         self.inner.peek_stream_position(&mut self.state)
     }
@@ -57,22 +57,16 @@ impl<'a> Read for PeekCursor<'a> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         self.inner.peek_read(&mut self.state, buf)
     }
-    
+
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         self.inner.peek_read_exact(&mut self.state, buf)
     }
 
-    fn read_to_end(
-        &mut self,
-        buf: &mut Vec<u8>,
-    ) -> Result<usize> {
+    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
         self.inner.peek_read_to_end(&mut self.state, buf)
     }
 
-    fn read_to_string(
-        &mut self,
-        buf: &mut String,
-    ) -> Result<usize> {
+    fn read_to_string(&mut self, buf: &mut String) -> Result<usize> {
         self.inner.peek_read_to_string(&mut self.state, buf)
     }
 }
@@ -103,10 +97,7 @@ pub(crate) struct DefaultImplPeekCursor<'a, T: ?Sized + PeekReadImpl> {
 
 impl<'a, T: ?Sized + PeekReadImpl> DefaultImplPeekCursor<'a, T> {
     pub fn new(inner: &'a mut T, state: &'a mut PeekCursorState) -> Self {
-        Self {
-            inner,
-            state,
-        }
+        Self { inner, state }
     }
 }
 

@@ -4,15 +4,15 @@
 /// Details for those wishing to implement [`PeekRead`].
 pub mod detail;
 
+mod bufreader;
 mod foreign_impl;
 mod seekreader;
-mod bufreader;
 mod util;
 
-use std::io::*;
+pub use bufreader::BufPeekReader;
 pub use detail::cursor::PeekCursor;
 pub use seekreader::SeekPeekReader;
-pub use bufreader::BufPeekReader;
+use std::io::*;
 
 
 /// A trait for a [`Read`] stream that supports peeking ahead in the stream.

@@ -1,5 +1,8 @@
-use crate::{PeekRead, PeekCursor, detail::{PeekReadImpl, PeekCursorState}};
 use crate::util::seek_add_offset;
+use crate::{
+    detail::{PeekCursorState, PeekReadImpl},
+    PeekCursor, PeekRead,
+};
 use std::io::*;
 
 /// A wrapper for a [`Read`] + [`Seek`] stream that implements [`PeekRead`] using seeking.
@@ -41,7 +44,10 @@ impl<R: Read + Seek> SeekPeekReader<R> {
     }
 
     fn init_start_pos(&mut self) -> Result<u64> {
-        let start_pos = self.start_pos.map(Ok).unwrap_or_else(|| self.inner.stream_position())?;
+        let start_pos = self
+            .start_pos
+            .map(Ok)
+            .unwrap_or_else(|| self.inner.stream_position())?;
         self.start_pos = Some(start_pos);
         Ok(start_pos)
     }
@@ -51,7 +57,7 @@ impl<R: Seek + Read> Seek for SeekPeekReader<R> {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
         self.inner.seek(pos)
     }
-    
+
     fn stream_position(&mut self) -> Result<u64> {
         self.inner.stream_position()
     }
@@ -61,7 +67,7 @@ impl<R: Seek + Read> Read for SeekPeekReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         self.inner.read(buf)
     }
-    
+
     fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
         self.inner.read_exact(buf)
     }
@@ -97,7 +103,7 @@ impl<R: Read + Seek> PeekReadImpl for SeekPeekReader<R> {
                     Err(e) => {
                         // Restore position.
                         self.inner.seek(SeekFrom::Start(cur_pos))?;
-                        return Err(e)
+                        return Err(e);
                     }
                 }
             }
@@ -105,7 +111,10 @@ impl<R: Read + Seek> PeekReadImpl for SeekPeekReader<R> {
 
         if new_pos < start_pos {
             self.inner.seek(SeekFrom::Start(cur_pos))?;
-            Err(Error::new(ErrorKind::InvalidInput, "invalid seek to a negative or overflowing position"))
+            Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid seek to a negative or overflowing position",
+            ))
         } else {
             Ok(new_pos - start_pos)
         }
@@ -147,7 +156,3 @@ impl<R: Read + Seek> PeekReadImpl for SeekPeekReader<R> {
         }
     }
 }
-
-
-
-

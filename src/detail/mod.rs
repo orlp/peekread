@@ -1,9 +1,9 @@
 pub(crate) mod cursor;
 
-use std::io::*;
-use crate::{PeekRead, PeekCursor};
-pub use cursor::PeekCursorState;
+use crate::{PeekCursor, PeekRead};
 use cursor::DefaultImplPeekCursor;
+pub use cursor::PeekCursorState;
+use std::io::*;
 
 /// A helper trait used to implement [`PeekRead`].
 ///
@@ -18,9 +18,13 @@ use cursor::DefaultImplPeekCursor;
 pub trait PeekReadImpl {
     /// Used to implement `self.peek().seek(pos)`. See [`Seek::seek`].
     fn peek_seek<'a>(&'a mut self, state: &'a mut PeekCursorState, pos: SeekFrom) -> Result<u64>;
-    
+
     /// Used to implement `self.peek().read(buf)`. See [`Read::read`].
-    fn peek_read<'a, 'b>(&'a mut self, state: &'a mut PeekCursorState, buf: &'b mut [u8]) -> Result<usize>;
+    fn peek_read<'a, 'b>(
+        &'a mut self,
+        state: &'a mut PeekCursorState,
+        buf: &'b mut [u8],
+    ) -> Result<usize>;
 
     /// Used to implement `self.peek().fill_buf()`. See [`BufRead::fill_buf`].
     fn peek_fill_buf<'a>(&'a mut self, state: &'a mut PeekCursorState) -> Result<&'a [u8]>;
@@ -36,7 +40,11 @@ pub trait PeekReadImpl {
     }
 
     /// Used to implement `self.peek().read_exact(buf)`. See [`Read::read_exact`].
-    fn peek_read_exact<'a, 'b>(&'a mut self, state: &'a mut PeekCursorState, buf: &'b mut [u8]) -> Result<()> {
+    fn peek_read_exact<'a, 'b>(
+        &'a mut self,
+        state: &'a mut PeekCursorState,
+        buf: &'b mut [u8],
+    ) -> Result<()> {
         DefaultImplPeekCursor::new(self, state).read_exact(buf)
     }
 

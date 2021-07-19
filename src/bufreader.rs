@@ -2,7 +2,10 @@ use std::collections::VecDeque;
 use std::io::*;
 
 use crate::util::seek_add_offset;
-use crate::{PeekRead, PeekCursor, detail::{PeekReadImpl, PeekCursorState}};
+use crate::{
+    detail::{PeekCursorState, PeekReadImpl},
+    PeekCursor, PeekRead,
+};
 
 /// A wrapper for a [`Read`] stream that implements [`PeekRead`] using a buffer to store peeked data.
 #[derive(Debug)]
@@ -94,7 +97,9 @@ impl<R: Read> BufPeekReader<R> {
     fn peek_slices(&self, peek_pos: usize) -> (&[u8], &[u8]) {
         let (a, b) = self.buf_storage.as_slices();
         let first = a.get(peek_pos..).unwrap_or_default();
-        let second = b.get(peek_pos.saturating_sub(a.len())..).unwrap_or_default();
+        let second = b
+            .get(peek_pos.saturating_sub(a.len())..)
+            .unwrap_or_default();
         (first, second)
     }
 }
@@ -151,7 +156,7 @@ impl<R: Read> PeekReadImpl for BufPeekReader<R> {
             SeekFrom::End(offset) => {
                 let mut requested_buffer_size = self.buf_storage.len();
                 while self.buf_storage.len() == requested_buffer_size {
-                    requested_buffer_size = (requested_buffer_size*2).max(Self::MIN_READ_TO_END);
+                    requested_buffer_size = (requested_buffer_size * 2).max(Self::MIN_READ_TO_END);
                     self.request_buffer(requested_buffer_size)?;
                 }
                 state.peek_pos = seek_add_offset(self.buf_storage.len() as u64, offset)?;
@@ -177,7 +182,9 @@ impl<R: Read> Read for BufPeekReader<R> {
         let (mut first, mut second) = self.buf_storage.as_slices();
         let mut written = first.read(buf).unwrap(); // Can't fail.
         written += second.read(&mut buf[written..])?; // Can't fail.
-        self.inner.read_exact(&mut buf[written..]).map(|_| self.consume(buf.len()))
+        self.inner
+            .read_exact(&mut buf[written..])
+            .map(|_| self.consume(buf.len()))
     }
 }
 
