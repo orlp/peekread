@@ -1,8 +1,7 @@
 use crate::detail::{PeekCursorState, PeekReadImpl};
 use crate::util::seek_add_offset;
 use crate::{PeekCursor, PeekRead};
-use std::io;
-use std::io::*;
+use std::io::{self, Cursor, Empty, Read, Result, Seek, SeekFrom, Take};
 
 impl<T: PeekRead + ?Sized> PeekRead for &mut T {
     #[inline]

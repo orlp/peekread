@@ -1,5 +1,5 @@
 use std::any::Any;
-use std::io::*;
+use std::io::{BufRead, Read, Result, Seek, SeekFrom};
 
 use crate::detail::PeekReadImpl;
 use crate::PeekRead;

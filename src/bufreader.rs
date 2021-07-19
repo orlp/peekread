@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::io::*;
+use std::io::{BufRead, Read, Result, SeekFrom};
 
 use crate::util::seek_add_offset;
 use crate::{

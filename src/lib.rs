@@ -12,7 +12,7 @@ mod util;
 pub use bufreader::BufPeekReader;
 pub use detail::cursor::PeekCursor;
 pub use seekreader::SeekPeekReader;
-use std::io::*;
+use std::io::Read;
 
 
 /// A trait for a [`Read`] stream that supports peeking ahead in the stream.

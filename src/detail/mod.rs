@@ -3,7 +3,7 @@ pub(crate) mod cursor;
 use crate::{PeekCursor, PeekRead};
 use cursor::DefaultImplPeekCursor;
 pub use cursor::PeekCursorState;
-use std::io::*;
+use std::io::{Read, Result, Seek, SeekFrom};
 
 /// A helper trait used to implement [`PeekRead`].
 ///

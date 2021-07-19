@@ -3,7 +3,7 @@ use crate::{
     detail::{PeekCursorState, PeekReadImpl},
     PeekCursor, PeekRead,
 };
-use std::io::*;
+use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom};
 
 /// A wrapper for a [`Read`] + [`Seek`] stream that implements [`PeekRead`] using seeking.
 #[derive(Debug)]
