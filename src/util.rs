@@ -7,7 +7,7 @@ pub fn seek_add_offset(current: u64, offset: i64) -> Result<u64> {
         .ok()
         .and_then(|n: i64| n.checked_add(offset))
         .and_then(|n| n.try_into().ok())
-        .ok_or(Error::new(
+        .ok_or_else(|| Error::new(
             ErrorKind::InvalidInput,
             "invalid seek to a negative or overflowing position",
         ))

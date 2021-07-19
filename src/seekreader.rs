@@ -137,7 +137,7 @@ impl<R: Read + Seek> PeekReadImpl for SeekPeekReader<R> {
         // With specialization we could provide a more optimal fill_buf here.
         let read = self.inner.read(&mut state.buf)?;
         self.inner.seek(SeekFrom::Current(-(read as i64)))?;
-        Ok(&state.buf)
+        Ok(&state.buf[..read])
     }
 
     fn peek_consume(&mut self, _state: &mut PeekCursorState, amt: usize) {

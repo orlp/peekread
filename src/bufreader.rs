@@ -123,7 +123,7 @@ impl<R: Read> PeekReadImpl for BufPeekReader<R> {
     fn peek_fill_buf(&mut self, state: &mut PeekCursorState) -> Result<&[u8]> {
         self.request_buffer(state.peek_pos as usize + 1)?;
         let (first, second) = self.peek_slices(state.peek_pos as usize);
-        if first.len() > 0 {
+        if !first.is_empty() {
             Ok(first)
         } else {
             Ok(second)
@@ -192,7 +192,7 @@ impl<R: Read> BufRead for BufPeekReader<R> {
     fn fill_buf(&mut self) -> Result<&[u8]> {
         self.request_buffer(self.min_read_size)?;
         let (first, second) = self.buf_storage.as_slices();
-        if first.len() > 0 {
+        if !first.is_empty() {
             Ok(first)
         } else {
             Ok(second)

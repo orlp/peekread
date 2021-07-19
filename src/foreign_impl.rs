@@ -188,8 +188,8 @@ impl<T: PeekRead> PeekReadImpl for Take<T> {
 
         let mut peeker = self.peek();
         peeker.seek(SeekFrom::Start(state.peek_pos))?;
-        peeker.read(&mut state.buf)?;
-        Ok(&state.buf)
+        let read = peeker.read(&mut state.buf)?;
+        Ok(&state.buf[..read])
     }
 
     fn peek_consume(&mut self, state: &mut PeekCursorState, amt: usize) {
