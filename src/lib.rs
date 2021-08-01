@@ -13,18 +13,18 @@
 //! into the stream without consuming the original stream.
 //!
 //! This is done through the [`PeekRead`] trait which has the method
-//! [`peek`]. When this method is called it returns a new [`PeekCursor`] object implementing
-//! [`Read`], [`BufRead`] and [`Seek`] that allows you to read from the stream
-//! without affecting the original stream.
-//! 
+//! [`peek`]. When this method is called it returns a new [`PeekCursor`] object
+//! implementing [`Read`], [`BufRead`] and [`Seek`] that allows you to read from
+//! the stream without affecting the original stream.
+//!
 //! The [`PeekRead`] trait is directly
 //! implemented on a select few types, but for most you will have to wrap your
-//! type in a [`SeekPeekReader`] or [`BufPeekReader`] that implements the peeking
-//! behavior using respectively seeking or buffering.
-//! 
+//! type in a [`SeekPeekReader`] or [`BufPeekReader`] that implements the
+//! peeking behavior using respectively seeking or buffering.
+//!
 //! # Examples
-//! One could try various different parsers on the same stream until one succeeds:
-//! ```no_run
+//! One could try various different parsers on the same stream until one
+//! succeeds: ```no_run
 //! # use std::io::{Result, Read, BufRead};
 //! # use std::fs::File;
 //! # enum ParseResult { Html(()), Jpg(()), Png(()), Gif(()), Js(()), Unknown }
@@ -36,7 +36,7 @@
 //! # fn foo() -> Result<ParseResult> {
 //! # use peekread::{PeekRead, SeekPeekReader};
 //! let mut f = SeekPeekReader::new(File::open("ambiguous")?);
-//! 
+//!
 //! // HTML is so permissive its parser never fails, so check for signature.
 //! if f.starts_with("<!DOCTYPE html>\n") {
 //!     Ok(ParseResult::Html(parse_as_html(f)))
@@ -50,9 +50,8 @@
 //! }
 //! # }
 //! ```
-//! 
+//!
 //! [`peek`]: [`PeekRead::peek`]
-
 
 /// Details for those wishing to implement [`PeekRead`].
 pub mod detail;
@@ -65,9 +64,9 @@ mod util;
 pub use bufreader::BufPeekReader;
 pub use detail::cursor::PeekCursor;
 pub use seekreader::SeekPeekReader;
-use std::io::{Read, Result};
 #[cfg(doc)]
 use std::io::{BufRead, BufReader, Seek};
+use std::io::{Read, Result};
 
 /// A trait for a [`Read`] stream that supports peeking ahead in the stream.
 ///
@@ -123,8 +122,7 @@ pub trait PeekRead: Read {
         let bytes = bytes.as_ref();
         let should_strip = self.starts_with(bytes)?;
         if should_strip {
-            std::io::copy(&mut self.take(bytes.len() as u64),
-                          &mut std::io::sink())?;
+            std::io::copy(&mut self.take(bytes.len() as u64), &mut std::io::sink())?;
         }
         Ok(should_strip)
     }

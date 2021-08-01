@@ -1,5 +1,5 @@
+use std::fmt::{Debug, Error as FmtError, Formatter};
 use std::io::{BufRead, Read, Result, Seek, SeekFrom};
-use std::fmt::{Debug, Formatter, Error as FmtError};
 
 type FmtResult = std::result::Result<(), FmtError>;
 
