@@ -1,3 +1,14 @@
+#![doc(html_root_url = "https://docs.rs/peekread/0.1.0")]
+#![warn(
+    invalid_html_tags,
+    missing_debug_implementations,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_lifetimes,
+    unused_import_braces
+)]
+#![deny(missing_docs)]
+
 //! This crate allows you to take an arbitrary [`Read`] stream and 'peek ahead'
 //! into the stream without consuming the original stream.
 //!
@@ -24,7 +35,7 @@
 //! # fn parse_as_javascript<T>(f: T) -> Result<()> { Ok(()) }
 //! # fn foo() -> Result<ParseResult> {
 //! # use peekread::{PeekRead, SeekPeekReader};
-//! let mut f = SeekPeekReader::new(File::open("ambiguous.txt")?);
+//! let mut f = SeekPeekReader::new(File::open("ambiguous")?);
 //! 
 //! // HTML is so permissive its parser never fails, so check for signature.
 //! if f.starts_with("<!DOCTYPE html>\n") {

@@ -1,4 +1,7 @@
 use std::io::{BufRead, Read, Result, Seek, SeekFrom};
+use std::fmt::{Debug, Formatter, Error as FmtError};
+
+type FmtResult = std::result::Result<(), FmtError>;
 
 use crate::detail::PeekReadImpl;
 #[cfg(doc)]
@@ -12,7 +15,10 @@ use crate::PeekRead;
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct PeekCursorState {
+    /// The peek position in the stream.
     pub peek_pos: u64,
+
+    /// A buffer you can use for BufRead.
     pub buf: [u8; 1],
 }
 
@@ -81,6 +87,14 @@ impl<'a> BufRead for PeekCursor<'a> {
 impl<'a> Drop for PeekCursor<'a> {
     fn drop(&mut self) {
         self.inner.peek_drop(&mut self.state)
+    }
+}
+
+impl<'a> Debug for PeekCursor<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("PeekCursor")
+            .field("state", &self.state)
+            .finish()
     }
 }
 
