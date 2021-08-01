@@ -1,5 +1,14 @@
 # peekread
 
+This crate allows you to take an arbitrary `Read` stream and 'peek ahead'
+into the stream without consuming the original stream. This is done through the
+`PeekRead` trait which has the method `peek`. When this method is called it
+returns a new `PeekCursor` object implementing `Read`, `BufRead` and `Seek` that
+allows you to read from the stream without affecting the original stream.
+The `PeekRead` trait is directly implemented on a select few types, but for most
+you will have to wrap your type in a `SeekPeekReader` or `BufPeekReader` that
+implements the peeking behavior using respectively seeking or buffering.
+Please refer to the [**the documentation**](https://docs.rs/peekread) for more information.
 
 The minimum required stable Rust version for `peekread` is 1.31.0. To start using
 `peekread` add the following to your `Cargo.toml`:
