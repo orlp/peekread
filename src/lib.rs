@@ -24,7 +24,8 @@
 //!
 //! # Examples
 //! One could try various different parsers on the same stream until one
-//! succeeds: ```no_run
+//! succeeds:
+//! ```no_run
 //! # use std::io::{Result, Read, BufRead};
 //! # use std::fs::File;
 //! # enum ParseResult { Html(()), Jpg(()), Png(()), Gif(()), Js(()), Unknown }
